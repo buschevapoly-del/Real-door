@@ -1,0 +1,28 @@
+"""Paths into the hackathon starter pack and frozen challenge constants."""
+import sys
+from pathlib import Path
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
+PACK_ROOT = REPO_ROOT / "realdoor-hackathon-starter-pack"
+STARTER_ROOT = PACK_ROOT / "starter"
+
+# Make the starter pack's reference implementation importable as `src.*`
+# without copying or modifying it.
+if str(STARTER_ROOT) not in sys.path:
+    sys.path.insert(0, str(STARTER_ROOT))
+
+RULE_CORPUS_PATH = PACK_ROOT / "rules" / "rule_corpus.jsonl"
+THRESHOLD_CSV_PATH = PACK_ROOT / "data" / "mtsp_2026_boston_cambridge_quincy.csv"
+CHECKLISTS_PATH = PACK_ROOT / "evaluation" / "application_checklists.json"
+QA_GOLD_PATH = PACK_ROOT / "evaluation" / "qa_gold.jsonl"
+SUBMISSION_SCHEMA_PATH = STARTER_ROOT / "schemas" / "submission.schema.json"
+DOCUMENT_GOLD_PATH = PACK_ROOT / "synthetic_documents" / "gold" / "document_gold.jsonl"
+DOCUMENTS_DIR = PACK_ROOT / "synthetic_documents" / "documents"
+
+# Hackathon convention, not a universal LIHTC rule: a document is "current"
+# if dated no more than this many days before the frozen event date.
+DOCUMENT_CURRENCY_WINDOW_DAYS = 60
+EVENT_DATE = "2026-07-18"
+
+DATA_DIR = REPO_ROOT / "app_data"
+DATA_DIR.mkdir(exist_ok=True)
