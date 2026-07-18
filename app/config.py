@@ -1,4 +1,5 @@
 """Paths into the hackathon starter pack and frozen challenge constants."""
+import hashlib
 import sys
 from pathlib import Path
 
@@ -26,3 +27,13 @@ EVENT_DATE = "2026-07-18"
 
 DATA_DIR = REPO_ROOT / "app_data"
 DATA_DIR.mkdir(exist_ok=True)
+
+
+def _rule_corpus_version() -> str:
+    """An honest fingerprint of the actual frozen rule corpus file -- changes
+    if and only if that file changes, rather than a hand-maintained number."""
+    digest = hashlib.sha256(RULE_CORPUS_PATH.read_bytes()).hexdigest()[:12]
+    return f"frozen-{EVENT_DATE}-{digest}"
+
+
+RULE_CORPUS_VERSION = _rule_corpus_version()

@@ -28,6 +28,9 @@ LABEL_COLOR = (0.365, 0.404, 0.439)
 VALUE_COLOR = (0.0, 0.0, 0.0)
 UNTRUSTED_MARKER = "UNTRUSTED DOCUMENT TEXT"
 
+# Fields below this confidence get an explicit review note in the UI.
+CONFIDENCE_REVIEW_THRESHOLD = 0.7
+
 # label text (as rendered, whitespace-normalized) -> canonical field name,
 # and a value parser hint, keyed by document_type.
 FIELD_MAP: dict[str, dict[str, tuple[str, str]]] = {
@@ -170,10 +173,13 @@ def _cluster_cells(words, y_tol=3, x_gap=25):
 
 
 def _pair_labels_to_values(label_cells, value_cells):
+    """Returns a list of (label_cell, value_cell_or_None, dx, dy) -- dx/dy are
+    the winning pairing's offsets, used downstream to calibrate confidence."""
     used = set()
     pairs = []
     for label in label_cells:
         best, best_i, best_dist = None, None, None
+        best_dx, best_dy = None, None
         for i, value in enumerate(value_cells):
             if i in used or value["top"] <= label["bottom"] - 2:
                 continue
@@ -184,10 +190,21 @@ def _pair_labels_to_values(label_cells, value_cells):
             dist = dy * 3 + dx
             if best is None or dist < best_dist:
                 best, best_i, best_dist = value, i, dist
+                best_dx, best_dy = dx, dy
         if best is not None:
             used.add(best_i)
-        pairs.append((label, best))
+        pairs.append((label, best, best_dx, best_dy))
     return pairs
+
+
+def _extraction_confidence(dx: float, dy: float, parse_failed: bool) -> float:
+    """Calibrate confidence from how tightly the value cell aligns under its
+    label (tighter alignment = more likely we grabbed the right cell) and
+    whether the value could actually be parsed into its expected type."""
+    confidence = max(0.5, min(0.95, 0.95 - dx * 0.01 - dy * 0.01))
+    if parse_failed:
+        confidence = min(confidence, 0.6)
+    return round(confidence, 2)
 
 
 def _parse_value(raw: str, kind: str):
@@ -276,7 +293,7 @@ def extract_document(pdf_path: Path, filename: Optional[str] = None) -> Extracti
         field_map = FIELD_MAP.get(doc_type, {})
         fields = []
         notes = []
-        for label_cell, value_cell in pairs:
+        for label_cell, value_cell, dx, dy in pairs:
             label_text = re.sub(r"\s+", " ", label_cell["text"]).strip().upper()
             mapping = field_map.get(label_text)
             if mapping is None:
@@ -286,6 +303,12 @@ def extract_document(pdf_path: Path, filename: Optional[str] = None) -> Extracti
                 notes.append(f"Could not locate a value for '{label_text}'.")
                 continue
             value = _parse_value(value_cell["text"], kind)
+            parse_failed = kind in ("money", "int", "float") and isinstance(value, str)
+            confidence = _extraction_confidence(dx, dy, parse_failed)
+            if confidence < CONFIDENCE_REVIEW_THRESHOLD:
+                notes.append(
+                    f"Low confidence ({confidence:.0%}) on '{label_text}' — please double-check this value."
+                )
             fields.append(
                 ExtractedField(
                     field=field_name,
@@ -293,7 +316,7 @@ def extract_document(pdf_path: Path, filename: Optional[str] = None) -> Extracti
                     page=1,
                     bbox=_bbox_from_cell(value_cell),
                     bbox_units="pdf_points_top_left_origin",
-                    confidence=0.9,
+                    confidence=confidence,
                     source="auto",
                 )
             )

@@ -41,6 +41,7 @@ def _run_household(household_id: str, size: int, documents: list) -> dict:
             resp = client.post(
                 f"/household/{household_id}/documents",
                 files={"file": (g["file_name"], fh, "application/pdf")},
+                data={"consent": "1"},
             )
         assert resp.status_code in (200, 303)
 

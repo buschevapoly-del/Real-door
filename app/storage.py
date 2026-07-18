@@ -4,9 +4,12 @@ No database, no network call, no automatic submission anywhere -- packages
 are only ever viewed, edited, downloaded, or deleted by the applicant
 themselves (governance/DATA_USE_AND_SAFETY.md, submission requirement 5).
 Each household's data lives in its own JSON file so "delete" is a single
-file removal with nothing left behind.
+file removal with nothing left behind -- including its activity log, which
+lives inside this same file rather than a separate store, so it never
+outlives the package it describes.
 """
 import json
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
@@ -19,7 +22,14 @@ def _path(household_id: str) -> Path:
 
 
 def _default_household(household_id: str) -> dict:
-    return {"household_id": household_id, "household_size": None, "documents": {}}
+    return {
+        "household_id": household_id,
+        "household_size": None,
+        "documents": {},
+        "consent_given": False,
+        "consent_given_at": None,
+        "activity_log": [],
+    }
 
 
 def list_households() -> list:
@@ -31,7 +41,11 @@ def get_household(household_id: str) -> dict:
     if not path.exists():
         return _default_household(household_id)
     with path.open(encoding="utf-8") as f:
-        return json.load(f)
+        household = json.load(f)
+    # Backfill households saved before consent/activity-log fields existed.
+    for key, value in _default_household(household_id).items():
+        household.setdefault(key, value)
+    return household
 
 
 def save_household(data: dict) -> None:
@@ -48,9 +62,39 @@ def delete_household(household_id: str) -> bool:
     return False
 
 
+def _log(household: dict, action: str, detail: str = "") -> None:
+    """Record that an action happened, never what data it involved -- no
+    corrected values or document contents, only field/document identifiers."""
+    household["activity_log"].append(
+        {
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "action": action,
+            "detail": detail,
+        }
+    )
+
+
+def give_consent(household_id: str) -> dict:
+    household = get_household(household_id)
+    if not household["consent_given"]:
+        household["consent_given"] = True
+        household["consent_given_at"] = datetime.now(timezone.utc).isoformat()
+        _log(household, "consent_given")
+        save_household(household)
+    return household
+
+
+def log_activity(household_id: str, action: str, detail: str = "") -> dict:
+    household = get_household(household_id)
+    _log(household, action, detail)
+    save_household(household)
+    return household
+
+
 def set_household_size(household_id: str, size: int) -> dict:
     household = get_household(household_id)
     household["household_size"] = size
+    _log(household, "household_size_set")
     save_household(household)
     return household
 
@@ -84,6 +128,7 @@ def add_document(
         "confirmed": False,
         "fields": fields,
     }
+    _log(household, "document_uploaded", detail=f"{document_id} ({document_type or 'unknown type'})")
     save_household(household)
     return household
 
@@ -105,6 +150,7 @@ def update_field(
         "confidence": 1.0,
         "source": "manual",
     }
+    _log(household, "field_corrected", detail=f"{document_id}.{field_name}")
     save_household(household)
     return household
 
@@ -119,6 +165,7 @@ def set_document_type(household_id: str, document_id: str, document_type: str) -
 def confirm_document(household_id: str, document_id: str) -> dict:
     household = get_household(household_id)
     household["documents"][document_id]["confirmed"] = True
+    _log(household, "document_confirmed", detail=document_id)
     save_household(household)
     return household
 
@@ -126,5 +173,6 @@ def confirm_document(household_id: str, document_id: str) -> dict:
 def delete_document(household_id: str, document_id: str) -> dict:
     household = get_household(household_id)
     household["documents"].pop(document_id, None)
+    _log(household, "document_deleted", detail=document_id)
     save_household(household)
     return household

@@ -18,11 +18,16 @@ from dataclasses import dataclass, field
 from datetime import date
 from typing import Optional
 
-from app.config import EVENT_DATE, DOCUMENT_CURRENCY_WINDOW_DAYS, RULE_CORPUS_PATH
+from app.config import (
+    EVENT_DATE,
+    DOCUMENT_CURRENCY_WINDOW_DAYS,
+    RULE_CORPUS_PATH,
+    RULE_CORPUS_VERSION,
+)
 from app.thresholds import lookup_threshold
 from app.safety import strip_decision_language
 
-from src.calculate import annualize, compare_to_threshold
+from src.calculate import annualize, compare_to_threshold, FREQUENCY
 from src.rules import load_rules
 
 EVENT_DATE_OBJ = date.fromisoformat(EVENT_DATE)
@@ -44,6 +49,11 @@ class IncomeLine:
     amount: float
     frequency: str
     annual_amount: float
+    periods_per_year: int = 1
+
+    @property
+    def formula(self) -> str:
+        return f"${self.amount:,.2f} x {self.periods_per_year} {self.frequency} periods/year = ${self.annual_amount:,.2f}"
 
 
 @dataclass
@@ -56,6 +66,7 @@ class SubmissionResult:
     income_lines: list = field(default_factory=list)
     citations: list = field(default_factory=list)
     threshold: Optional[dict] = None
+    rule_corpus_version: str = RULE_CORPUS_VERSION
 
 
 def _rules():
@@ -143,7 +154,9 @@ def build_submission(household_id: str, household_size: int, documents: list) ->
         gross = float(_value(chosen, "gross_pay"))
         freq = _value(chosen, "pay_frequency")
         annual = annualize(gross, freq)
-        income_lines.append(IncomeLine(chosen["document_id"], "pay_stub", "gross_pay", gross, freq, annual))
+        income_lines.append(
+            IncomeLine(chosen["document_id"], "pay_stub", "gross_pay", gross, freq, annual, FREQUENCY[freq])
+        )
         citations.append(_rule_citation(rules, "CH-INCOME-001"))
         citations.append(_field_citation(chosen["document_id"], "gross_pay", chosen["fields"]["gross_pay"]))
 
@@ -152,12 +165,18 @@ def build_submission(household_id: str, household_size: int, documents: list) ->
             amount = float(_value(d, "monthly_benefit"))
             freq = _value(d, "benefit_frequency")
             annual = annualize(amount, freq)
-            income_lines.append(IncomeLine(d["document_id"], "benefit_letter", "monthly_benefit", amount, freq, annual))
+            income_lines.append(
+                IncomeLine(d["document_id"], "benefit_letter", "monthly_benefit", amount, freq, annual, FREQUENCY[freq])
+            )
             citations.append(_field_citation(d["document_id"], "monthly_benefit", d["fields"]["monthly_benefit"]))
         elif d["document_type"] == "gig_statement":
             amount = float(_value(d, "gross_receipts"))
             annual = annualize(amount, "monthly")
-            income_lines.append(IncomeLine(d["document_id"], "gig_statement", "gross_receipts", amount, "monthly", annual))
+            income_lines.append(
+                IncomeLine(
+                    d["document_id"], "gig_statement", "gross_receipts", amount, "monthly", annual, FREQUENCY["monthly"]
+                )
+            )
             citations.append(_field_citation(d["document_id"], "gross_receipts", d["fields"]["gross_receipts"]))
             has_corroboration = any(x["document_type"] == "gig_income_corroboration" for x in documents)
             if not has_corroboration:

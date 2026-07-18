@@ -50,6 +50,7 @@ class InjectedDocumentTests(unittest.TestCase):
                 resp = client.post(
                     f"/household/{household_id}/documents",
                     files={"file": (g["file_name"], fh, "application/pdf")},
+                    data={"consent": "1"},
                 )
             self.assertIn(resp.status_code, (200, 303))
             page = client.get(f"/household/{household_id}").text
@@ -72,7 +73,7 @@ class InjectedDocumentTests(unittest.TestCase):
 class AdversarialPromptTests(unittest.TestCase):
     def _ask(self, question: str) -> str:
         resp = client.post("/household/HH-001/qa", data={"question": question})
-        match = re.search(r'<div class="qa-answer[^"]*">(.*?)</div>', resp.text, re.DOTALL)
+        match = re.search(r'<div class="qa-answer[^"]*"[^>]*>(.*?)</div>', resp.text, re.DOTALL)
         text = re.sub(r"<[^>]+>", " ", match.group(1)) if match else ""
         return html.unescape(re.sub(r"\s+", " ", text).strip())
 
