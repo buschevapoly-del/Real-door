@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>{% block title %}RealDoor{% endblock %}</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<header>
+  <h1>RealDoor</h1>
+  <p class="tagline">Application-readiness helper — not an eligibility decision.</p>
+  {% block header_extra %}{% endblock %}
+  <p><a href="/how-it-works">How this works &amp; what data we use</a></p>
+</header>
+
+<div class="banner">{{ no_decision_disclaimer }}</div>
+<div class="banner subtle">{{ sixty_day_disclaimer }} Event date: {{ event_date }}. Window: {{ currency_window_days }} days.</div>
+
+<main>
+{% if flash_message %}
+<div class="flash" role="status">{{ flash_message }}</div>
+{% endif %}
+{% if consent_error %}
+<div class="alert danger" role="alert">{{ consent_error }}</div>
+{% endif %}
+{% block content %}{% endblock %}
+</main>
+</body>
+</html>

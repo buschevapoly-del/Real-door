@@ -28,6 +28,12 @@ EVENT_DATE = "2026-07-18"
 DATA_DIR = REPO_ROOT / "app_data"
 DATA_DIR.mkdir(exist_ok=True)
 
+# Rendered page images (see app/extraction.py:_render_page_image) live here,
+# one per document, under a per-household subfolder so deleting a household
+# also deletes its images (never a separate, longer-lived store).
+IMAGES_DIR = DATA_DIR / "images"
+IMAGES_DIR.mkdir(exist_ok=True)
+
 
 def _rule_corpus_version() -> str:
     """An honest fingerprint of the actual frozen rule corpus file -- changes

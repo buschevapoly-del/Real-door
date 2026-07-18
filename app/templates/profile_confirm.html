@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% block title %}RealDoor — Confirm your documents{% endblock %}
+{% block header_extra %}{% include "_household_switcher.html" %}{% endblock %}
+{% block content %}
+{% include "_step_indicator.html" %}
+
+<h2>Confirm your documents</h2>
+<p>Check every value below and fix anything that's wrong. Nothing is used in your calculation until you confirm.</p>
+
+{% if not unconfirmed_documents %}
+<p class="empty">Nothing to confirm right now. <a href="/household/{{ household.household_id }}/profile">Upload a document</a> first.</p>
+{% else %}
+<form method="post" action="/household/{{ household.household_id }}/profile/confirm">
+  {% for doc in unconfirmed_documents %}
+  <article class="doc-card">
+    <div class="doc-head">
+      <img src="/household/{{ household.household_id }}/documents/{{ doc.document_id }}/image" alt="" class="thumb">
+      <strong>{{ doc.file_name }}</strong>
+    </div>
+
+    <label>Document type:
+      <select name="document_type__{{ doc.document_id }}">
+        <option value="">-- select --</option>
+        {% for dt in document_types %}
+        <option value="{{ dt }}" {{ 'selected' if doc.document_type == dt else '' }}>{{ document_type_labels.get(dt, dt) }}</option>
+        {% endfor %}
+      </select>
+    </label>
+
+    {% if doc.document_type and field_map.get(doc.document_type) %}
+    <table class="fields">
+      <thead><tr><th>Field</th><th>Value</th></tr></thead>
+      <tbody>
+      {% for label, (field_name, kind) in field_map[doc.document_type].items() %}
+        {% set record = doc.fields.get(field_name) %}
+        {% set cs = confidence_state(record) if record else None %}
+        <tr>
+          <td>
+            {{ field_labels.get(field_name, field_name) }}
+            {% if cs %}<br><span class="badge {{ cs.state }}">{{ cs.message }}</span>{% endif %}
+          </td>
+          <td><input name="{{ field_name }}__{{ doc.document_id }}" value="{{ record.value if record else '' }}"></td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    {% endif %}
+  </article>
+  {% endfor %}
+
+  <button type="submit">Confirm and continue</button>
+</form>
+{% endif %}
+
+<div class="inline-form">
+  <a href="/household/{{ household.household_id }}/profile/review" class="button-link secondary">Back</a>
+</div>
+{% endblock %}

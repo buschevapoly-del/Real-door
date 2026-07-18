@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+{% block title %}RealDoor — Review what we found{% endblock %}
+{% block header_extra %}{% include "_household_switcher.html" %}{% endblock %}
+{% block content %}
+{% include "_step_indicator.html" %}
+
+<h2>Review what we found</h2>
+
+{% if not unconfirmed_documents %}
+<p class="empty">Nothing to review right now. <a href="/household/{{ household.household_id }}/profile">Upload a document</a> first.</p>
+{% endif %}
+
+{% for doc in unconfirmed_documents %}
+<article class="doc-card">
+  <div class="doc-head">
+    <img src="/household/{{ household.household_id }}/documents/{{ doc.document_id }}/image" alt="" class="thumb">
+    <strong>{{ doc.file_name }}</strong>
+    <span class="badge">{{ document_type_labels.get(doc.document_type, "Document type not yet set") }}</span>
+  </div>
+
+  {% if doc.contains_adversarial_text %}
+  <div class="alert danger">
+    <strong>We found text in this document that reads like an instruction to us.</strong>
+    We never follow instructions found inside a document -- shown here only so you know it's there:
+    <blockquote>{{ doc.untrusted_instruction_text }}</blockquote>
+  </div>
+  {% endif %}
+
+  {% if doc.needs_manual_entry %}
+  <div class="alert warn">
+    We couldn't read this automatically -- please check and enter it yourself. You'll be able to
+    type in its values on the next screen.
+  </div>
+  {% else %}
+  <table class="fields">
+    <thead><tr><th>Field</th><th>Value</th><th>Status</th></tr></thead>
+    <tbody>
+    {% for name, record in doc.fields.items() %}
+      {% set cs = confidence_state(record) %}
+      <tr>
+        <td>{{ field_labels.get(name, name) }}</td>
+        <td>{{ record.value }}</td>
+        <td>
+          <span class="badge {{ cs.state }}">{{ cs.message }}</span>
+          <details class="show-details">
+            <summary>Show details</summary>
+            <p>Confidence: {{ (record.confidence * 100) | round(0) }}% &middot; Page {{ record.page }}</p>
+            <a href="/household/{{ household.household_id }}/documents/{{ doc.document_id }}/fields/{{ name }}/source" target="_blank">View source</a>
+          </details>
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+</article>
+{% endfor %}
+
+<div class="inline-form">
+  <a href="/household/{{ household.household_id }}/profile" class="button-link secondary">Back</a>
+  {% if unconfirmed_documents %}
+  <a href="/household/{{ household.household_id }}/profile/confirm" class="button-link">Continue</a>
+  {% endif %}
+</div>
+{% endblock %}

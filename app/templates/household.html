@@ -1,133 +1,38 @@
-<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <title>RealDoor — {{ household.household_id }}</title>
-  <link rel="stylesheet" href="/static/style.css">
-</head>
-<body>
-<header>
-  <h1>RealDoor</h1>
-  <p class="tagline">Application-readiness helper — not an eligibility decision.</p>
-  <form class="switcher" method="get" action="/household/{{ household.household_id }}"
-        onsubmit="event.preventDefault(); window.location = '/household/' + document.getElementById('hh-switch').value;">
-    <label>Household: <input id="hh-switch" value="{{ household.household_id }}"></label>
-    <button type="submit">Open</button>
-  </form>
-  {% if all_households %}
-  <p class="known">Known: {% for h in all_households %}<a href="/household/{{ h }}">{{ h }}</a>{% if not loop.last %}, {% endif %}{% endfor %}</p>
-  {% endif %}
-  <p><a href="/how-it-works">How this works &amp; what data we use</a></p>
-</header>
-
-<div class="banner">{{ no_decision_disclaimer }}</div>
-<div class="banner subtle">{{ sixty_day_disclaimer }} Event date: {{ event_date }}. Window: {{ currency_window_days }} days.</div>
-
-<main>
-{% if flash_message %}
-<div class="flash" role="status">{{ flash_message }}</div>
-{% endif %}
-{% if consent_error %}
-<div class="alert danger" role="alert">{{ consent_error }}</div>
-{% endif %}
+{% extends "base.html" %}
+{% block title %}RealDoor — {{ household.household_id }}{% endblock %}
+{% block header_extra %}{% include "_household_switcher.html" %}{% endblock %}
+{% block content %}
 <section id="module-1">
   <h2>Module 1 — Profile</h2>
 
-  <form method="post" action="/household/{{ household.household_id }}/size" class="inline-form">
-    <label>Household size:
-      <input type="number" name="household_size" min="1" value="{{ household.household_size or '' }}" required>
-    </label>
-    <button type="submit">Save size</button>
-  </form>
-
-  <form method="post" action="/household/{{ household.household_id }}/documents" enctype="multipart/form-data" class="inline-form">
-    <label>Upload a document (PDF): <input type="file" name="file" accept="application/pdf" required></label>
-    {% if not household.consent_given %}
-    <label class="confirm-row">
-      <input type="checkbox" name="consent" value="1" required>
-      I consent to RealDoor extracting only the allowlisted fields explained on the
-      <a href="/how-it-works">"How this works"</a> page from documents I upload.
-    </label>
-    {% endif %}
-    <button type="submit">Upload &amp; extract</button>
-  </form>
-
-  {% if not household.documents %}
-    <p class="empty">No documents uploaded yet.</p>
+  {% if not household.household_size or unconfirmed_count %}
+  <p>
+    {% if unconfirmed_count %}You have {{ unconfirmed_count }} document(s) waiting to be reviewed.{% endif %}
+    <a href="/household/{{ household.household_id }}/profile" class="button-link">
+      {% if household.documents %}Add or review documents{% else %}Get started{% endif %}
+    </a>
+  </p>
   {% endif %}
 
-  {% for doc_id, doc in household.documents.items() %}
-  <article class="doc-card {{ 'confirmed' if doc.confirmed else 'unconfirmed' }}">
-    <div class="doc-head">
-      <strong>{{ doc.file_name }}</strong>
-      <span class="doc-id">{{ doc.document_id }}</span>
-      {% if doc.confirmed %}<span class="badge ok">confirmed</span>{% else %}<span class="badge warn">needs confirmation</span>{% endif %}
-    </div>
-
-    {% if doc.contains_adversarial_text %}
-    <div class="alert danger">
-      <strong>Untrusted embedded text detected and ignored.</strong>
-      This document contains text that reads like an instruction to the system. It is
-      never treated as an instruction or as a field value — shown here only for transparency:
-      <blockquote>{{ doc.untrusted_instruction_text }}</blockquote>
-    </div>
-    {% endif %}
-
-    {% if doc.needs_manual_entry %}
-    <div class="alert warn">
-      No text layer could be read from this page (likely a scanned image). Please
-      select the document type and enter its values manually below; nothing was
-      auto-extracted, so this document keeps confidence 0% until you confirm it.
-    </div>
-    {% endif %}
-
-    <form method="post" action="/household/{{ household.household_id }}/documents/{{ doc_id }}/save">
-      <label>Document type:
-        <select name="document_type">
-          <option value="">-- select --</option>
-          {% for dt in document_types %}
-          <option value="{{ dt }}" {{ 'selected' if doc.document_type == dt else '' }}>{{ dt }}</option>
-          {% endfor %}
-        </select>
-      </label>
-
-      {% if doc.document_type and field_map.get(doc.document_type) %}
-      <table class="fields">
-        <thead><tr><th>Field</th><th>Value</th><th>Source / provenance</th></tr></thead>
-        <tbody>
-        {% for label, (field_name, kind) in field_map[doc.document_type].items() %}
-          {% set f = doc.fields.get(field_name) %}
-          <tr>
-            <td>{{ field_labels.get(field_name, field_name) }}</td>
-            <td><input name="{{ field_name }}" value="{{ f.value if f else '' }}"></td>
-            <td class="provenance">
-              {% if f %}
-                page {{ f.page }} · bbox {{ f.bbox }} · confidence {{ (f.confidence * 100) | round(0) }}% · {{ f.source }}
-              {% else %}
-                not extracted — please enter manually
-              {% endif %}
-            </td>
-          </tr>
-        {% endfor %}
-        </tbody>
-      </table>
-      {% endif %}
-
-      {% if doc.notes %}
-        <ul class="notes">{% for n in doc.notes %}<li>{{ n }}</li>{% endfor %}</ul>
-      {% endif %}
-
-      <label class="confirm-row">
-        <input type="checkbox" name="confirm" value="1" {{ 'checked' if doc.confirmed else '' }}>
-        I confirm these values are correct and may be used in the calculation.
-      </label>
-      <button type="submit">Save changes</button>
-    </form>
-    <form method="post" action="/household/{{ household.household_id }}/documents/{{ doc_id }}/delete" class="inline-form">
-      <button type="submit" class="danger-btn">Delete document</button>
-    </form>
-  </article>
-  {% endfor %}
+  {% if confirmed_documents %}
+  <p>{{ confirmed_documents|length }} document(s) confirmed:</p>
+  <ul class="file-list">
+    {% for doc in confirmed_documents %}
+    <li class="file-row">
+      <img src="/household/{{ household.household_id }}/documents/{{ doc.document_id }}/image" alt="" class="thumb">
+      <span>{{ doc.file_name }}</span>
+      <span class="badge">{{ document_type_labels.get(doc.document_type, doc.document_type) }}</span>
+      <form method="post" action="/household/{{ household.household_id }}/documents/{{ doc.document_id }}/delete" class="inline-form">
+        <input type="hidden" name="redirect_to" value="/household/{{ household.household_id }}">
+        <button type="submit" class="danger-btn">Remove</button>
+      </form>
+    </li>
+    {% endfor %}
+  </ul>
+  <p><a href="/household/{{ household.household_id }}/profile">Add more documents</a></p>
+  {% elif not unconfirmed_count %}
+  <p class="empty">No documents yet.</p>
+  {% endif %}
 </section>
 
 <section id="module-2">
@@ -205,11 +110,11 @@
     <thead><tr><th>Required document type</th><th>Status</th></tr></thead>
     <tbody>
     {% for dt in checklist.required %}
-      <tr><td>{{ dt }}</td>
+      <tr><td>{{ document_type_labels.get(dt, dt) }}</td>
           <td>{% if dt in checklist.missing %}<span class="badge warn">missing</span>{% else %}<span class="badge ok">present</span>{% endif %}</td></tr>
     {% endfor %}
     {% for dt in checklist.extra %}
-      <tr><td>{{ dt }} (not on required list)</td><td><span class="badge">extra</span></td></tr>
+      <tr><td>{{ document_type_labels.get(dt, dt) }} (not on required list)</td><td><span class="badge">extra</span></td></tr>
     {% endfor %}
     </tbody>
   </table>
@@ -236,6 +141,4 @@
   </ul>
   {% endif %}
 </section>
-</main>
-</body>
-</html>
+{% endblock %}

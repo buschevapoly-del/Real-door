@@ -122,3 +122,48 @@ table.fields th, table.fields td { text-align: left; padding: 0.35rem 0.5rem; bo
   margin-bottom: 1rem;
   font-size: 0.9rem;
 }
+
+.button-link.secondary {
+  background: transparent;
+  color: var(--accent);
+  border: 1px solid var(--border);
+}
+
+/* Confidence states (Module 1, screens 1.2/1.3) -- plain language + color,
+   never a raw number in the default view. */
+.badge.good { background: var(--ok-bg); color: var(--ok-fg); }
+.badge.check { background: var(--warn-bg); color: var(--warn-fg); }
+.badge.unread { background: var(--warn-bg); color: var(--warn-fg); }
+.badge.manual { background: color-mix(in srgb, var(--accent) 15%, var(--bg)); color: var(--accent); }
+
+.show-details { margin-top: 0.3rem; font-size: 0.8rem; }
+.show-details summary { cursor: pointer; color: var(--muted); }
+.show-details p { margin: 0.3rem 0; color: var(--muted); }
+
+/* Step indicator (Module 1's 3-screen flow) */
+.steps { margin: 1rem 0; }
+.step-label { font-size: 0.85rem; color: var(--muted); margin: 0 0 0.3rem; }
+.step-bar { display: flex; gap: 0.4rem; list-style: none; margin: 0; padding: 0; }
+.step-seg { flex: 1; height: 0.35rem; border-radius: 0.2rem; background: var(--border); }
+.step-seg.current { background: var(--accent); }
+.step-seg.done { background: color-mix(in srgb, var(--accent) 55%, var(--border)); }
+
+/* File list (upload screen + confirmed-document summary) */
+.file-list { list-style: none; margin: 0.5rem 0; padding: 0; }
+.file-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.5rem 0;
+  border-bottom: 1px solid var(--border);
+}
+.file-row span:first-of-type { flex: 1; }
+.thumb {
+  width: 42px;
+  height: 54px;
+  object-fit: cover;
+  border: 1px solid var(--border);
+  border-radius: 0.2rem;
+  background: var(--bg);
+}
+.doc-head .thumb { width: 32px; height: 42px; }

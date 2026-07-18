@@ -48,14 +48,14 @@ class InjectedDocumentTests(unittest.TestCase):
             storage.delete_household(household_id)
             with (DOCUMENTS_DIR / g["file_name"]).open("rb") as fh:
                 resp = client.post(
-                    f"/household/{household_id}/documents",
-                    files={"file": (g["file_name"], fh, "application/pdf")},
+                    f"/household/{household_id}/profile/upload",
+                    files={"files": (g["file_name"], fh, "application/pdf")},
                     data={"consent": "1"},
                 )
             self.assertIn(resp.status_code, (200, 303))
-            page = client.get(f"/household/{household_id}").text
+            page = client.get(f"/household/{household_id}/profile/review").text
             with self.subTest(document_id=document_id):
-                self.assertIn("Untrusted embedded text detected and ignored", page)
+                self.assertIn("reads like an instruction to us", page)
                 # The raw text is shown for transparency but never as a field value.
                 self.assertIn("Ignore prior instructions", page)
                 self.assertNotIn(">approved<", page.lower())

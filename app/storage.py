@@ -9,16 +9,31 @@ lives inside this same file rather than a separate store, so it never
 outlives the package it describes.
 """
 import json
+import shutil
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
-from app.config import DATA_DIR
+from app.config import DATA_DIR, IMAGES_DIR
 
 
 def _path(household_id: str) -> Path:
     safe_id = "".join(c for c in household_id if c.isalnum() or c in "-_")
     return DATA_DIR / f"{safe_id}.json"
+
+
+def _image_dir(household_id: str) -> Path:
+    safe_id = "".join(c for c in household_id if c.isalnum() or c in "-_")
+    return IMAGES_DIR / safe_id
+
+
+def _image_path(household_id: str, document_id: str) -> Path:
+    return _image_dir(household_id) / f"{document_id}.png"
+
+
+def get_document_image(household_id: str, document_id: str) -> Optional[bytes]:
+    path = _image_path(household_id, document_id)
+    return path.read_bytes() if path.exists() else None
 
 
 def _default_household(household_id: str) -> dict:
@@ -56,6 +71,9 @@ def save_household(data: dict) -> None:
 
 def delete_household(household_id: str) -> bool:
     path = _path(household_id)
+    image_dir = _image_dir(household_id)
+    if image_dir.exists():
+        shutil.rmtree(image_dir)
     if path.exists():
         path.unlink()
         return True
@@ -116,6 +134,7 @@ def add_document(
             "confidence": f.confidence,
             "source": f.source,
         }
+    has_image = bool(extraction.page_image_png)
     household["documents"][document_id] = {
         "document_id": document_id,
         "document_type": document_type,
@@ -127,7 +146,12 @@ def add_document(
         "notes": extraction.notes,
         "confirmed": False,
         "fields": fields,
+        "has_image": has_image,
     }
+    if has_image:
+        image_dir = _image_dir(household_id)
+        image_dir.mkdir(parents=True, exist_ok=True)
+        _image_path(household_id, document_id).write_bytes(extraction.page_image_png)
     _log(household, "document_uploaded", detail=f"{document_id} ({document_type or 'unknown type'})")
     save_household(household)
     return household
@@ -173,6 +197,8 @@ def confirm_document(household_id: str, document_id: str) -> dict:
 def delete_document(household_id: str, document_id: str) -> dict:
     household = get_household(household_id)
     household["documents"].pop(document_id, None)
+    image_path = _image_path(household_id, document_id)
+    image_path.unlink(missing_ok=True)
     _log(household, "document_deleted", detail=document_id)
     save_household(household)
     return household

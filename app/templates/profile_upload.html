@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+{% block title %}RealDoor — Upload documents{% endblock %}
+{% block header_extra %}{% include "_household_switcher.html" %}{% endblock %}
+{% block content %}
+{% include "_step_indicator.html" %}
+
+<h2>Upload your documents</h2>
+
+{% if not household.household_size %}
+<form method="post" action="/household/{{ household.household_id }}/size" class="inline-form">
+  <label>How many people are in your household? (used to find the right income limit)
+    <input type="number" name="household_size" min="1" required>
+  </label>
+  <button type="submit">Save</button>
+</form>
+{% else %}
+<p>Household size on file: <strong>{{ household.household_size }}</strong>
+  (<a href="#change-size">change</a>)</p>
+<details id="change-size">
+  <summary>Change household size</summary>
+  <form method="post" action="/household/{{ household.household_id }}/size" class="inline-form">
+    <label>Number of people in your household:
+      <input type="number" name="household_size" min="1" value="{{ household.household_size }}" required>
+    </label>
+    <button type="submit">Save</button>
+  </form>
+</details>
+{% endif %}
+
+<form method="post" action="/household/{{ household.household_id }}/profile/upload" enctype="multipart/form-data">
+  <label for="file-input">Upload your documents (pay stubs, employment letters, benefit letters)</label>
+  <input id="file-input" type="file" name="files" accept="application/pdf" multiple required>
+
+  {% if not household.consent_given %}
+  <label class="confirm-row">
+    <input type="checkbox" name="consent" value="1" required>
+    I consent to RealDoor extracting only the allowlisted fields explained on the
+    <a href="/how-it-works">"How this works"</a> page from documents I upload.
+  </label>
+  {% endif %}
+
+  <button type="submit">Upload</button>
+</form>
+
+{% if unconfirmed_documents %}
+<h3>Uploaded so far</h3>
+<ul class="file-list">
+  {% for doc in unconfirmed_documents %}
+  <li class="file-row">
+    <img src="/household/{{ household.household_id }}/documents/{{ doc.document_id }}/image" alt="" class="thumb">
+    <span>{{ doc.file_name }}</span>
+    <form method="post" action="/household/{{ household.household_id }}/documents/{{ doc.document_id }}/delete" class="inline-form">
+      <input type="hidden" name="redirect_to" value="/household/{{ household.household_id }}/profile">
+      <button type="submit" class="danger-btn">Remove</button>
+    </form>
+  </li>
+  {% endfor %}
+</ul>
+<a href="/household/{{ household.household_id }}/profile/review" class="button-link">Continue</a>
+{% else %}
+<p class="empty">Upload at least one document to continue.</p>
+{% endif %}
+
+{% if confirmed_count %}
+<p class="empty">You already have {{ confirmed_count }} confirmed document(s). <a href="/household/{{ household.household_id }}">Go to your overview</a>.</p>
+{% endif %}
+{% endblock %}

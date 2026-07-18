@@ -1,9 +1,10 @@
-"""End-to-end regression test: drive the real FastAPI app (upload -> confirm
--> calculate) for all 6 household fixtures in the hackathon pack and check
-the result against evaluation/application_checklists.json.
+"""End-to-end regression test: drive the real FastAPI app (upload -> review
+-> confirm -> calculate) for all 6 household fixtures in the hackathon pack
+and check the result against evaluation/application_checklists.json.
 
 This runs the actual HTTP routes (not the internal functions directly) so
-it exercises the same code path a browser would.
+it exercises the same code path a browser would, through Module 1's 3
+screens (Upload / Review / Confirm).
 """
 import json
 import re
@@ -36,28 +37,30 @@ def _run_household(household_id: str, size: int, documents: list) -> dict:
     resp = client.post(f"/household/{household_id}/size", data={"household_size": size})
     assert resp.status_code in (200, 303)
 
-    for g in sorted(documents, key=lambda d: d["document_id"]):
-        with (DOCUMENTS_DIR / g["file_name"]).open("rb") as fh:
-            resp = client.post(
-                f"/household/{household_id}/documents",
-                files={"file": (g["file_name"], fh, "application/pdf")},
-                data={"consent": "1"},
-            )
-        assert resp.status_code in (200, 303)
-
-    page = client.get(f"/household/{household_id}").text
-    doc_ids = re.findall(rf'action="/household/{household_id}/documents/([^/"]+)/save"', page)
     ordered_gold = sorted(documents, key=lambda d: d["document_id"])
-    assert len(doc_ids) == len(ordered_gold)
+    files = [
+        ("files", (g["file_name"], (DOCUMENTS_DIR / g["file_name"]).read_bytes(), "application/pdf"))
+        for g in ordered_gold
+    ]
+    resp = client.post(
+        f"/household/{household_id}/profile/upload",
+        files=files,
+        data={"consent": "1"},
+    )
+    assert resp.status_code in (200, 303)
 
+    page = client.get(f"/household/{household_id}/profile/confirm").text
+    doc_ids = re.findall(r'name="document_type__([^"]+)"', page)
+    assert len(doc_ids) == len(ordered_gold), (doc_ids, [g["document_id"] for g in ordered_gold])
+
+    form = {}
     for doc_id, g in zip(doc_ids, ordered_gold):
-        form = {"confirm": "1"}
         for f in g["fields"]:
             if f["field"] == "untrusted_instruction_text":
                 continue
-            form[f["field"]] = str(f["value"])
-        resp = client.post(f"/household/{household_id}/documents/{doc_id}/save", data=form)
-        assert resp.status_code in (200, 303)
+            form[f"{f['field']}__{doc_id}"] = str(f["value"])
+    resp = client.post(f"/household/{household_id}/profile/confirm", data=form)
+    assert resp.status_code in (200, 303)
 
     return client.get(f"/household/{household_id}/submission.json").json()
 

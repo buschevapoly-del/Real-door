@@ -17,6 +17,7 @@ requirement) -- this code never decides anything on its own.
 """
 from __future__ import annotations
 
+import io
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -30,6 +31,12 @@ UNTRUSTED_MARKER = "UNTRUSTED DOCUMENT TEXT"
 
 # Fields below this confidence get an explicit review note in the UI.
 CONFIDENCE_REVIEW_THRESHOLD = 0.7
+
+# Resolution (pixels per inch) used to render the "view source" page image.
+# The original uploaded PDF is still deleted immediately after processing;
+# this rendered image is the only visual record kept, and only so the
+# applicant (or a reviewer) can see exactly where a value came from.
+IMAGE_RESOLUTION = 150
 
 # label text (as rendered, whitespace-normalized) -> canonical field name,
 # and a value parser hint, keyed by document_type.
@@ -108,6 +115,7 @@ class ExtractionResult:
     contains_adversarial_text: bool = False
     needs_manual_entry: bool = False
     notes: list = field(default_factory=list)
+    page_image_png: Optional[bytes] = None
 
 
 def _color_match(color, target, tol=0.03) -> bool:
@@ -262,6 +270,34 @@ def _extract_untrusted_text(page) -> Optional[str]:
     return tail.strip() or None
 
 
+def draw_highlight(image_png: bytes, bbox: list) -> bytes:
+    """Draw a highlight box on a stored page image for a field's bbox (in
+    PDF points, top-left origin) -- powers the "view source" link without
+    ever showing the coordinates themselves to the applicant."""
+    from PIL import Image, ImageDraw
+
+    image = Image.open(io.BytesIO(image_png)).convert("RGB")
+    scale = IMAGE_RESOLUTION / 72
+    x0, y0, x1, y1 = (round(c * scale) for c in bbox)
+    pad = 4
+    ImageDraw.Draw(image).rectangle(
+        [x0 - pad, y0 - pad, x1 + pad, y1 + pad], outline=(214, 40, 40), width=4
+    )
+    buffer = io.BytesIO()
+    image.save(buffer, format="PNG")
+    return buffer.getvalue()
+
+
+def _render_page_image(page) -> bytes:
+    """A plain (unhighlighted) rendering of the page, kept so the applicant
+    or a reviewer can see exactly where a value came from later ("view
+    source"). This is the only visual record kept -- the uploaded PDF
+    itself is still deleted immediately after processing."""
+    buffer = io.BytesIO()
+    page.to_image(resolution=IMAGE_RESOLUTION).original.convert("RGB").save(buffer, format="PNG")
+    return buffer.getvalue()
+
+
 def extract_document(pdf_path: Path, filename: Optional[str] = None) -> ExtractionResult:
     filename = filename or pdf_path.name
     with pdfplumber.open(pdf_path) as pdf:
@@ -269,6 +305,7 @@ def extract_document(pdf_path: Path, filename: Optional[str] = None) -> Extracti
         page_size = [round(page.width, 2), round(page.height, 2)]
         doc_type = _detect_document_type(page, filename)
         untrusted_text = _extract_untrusted_text(page)
+        page_image_png = _render_page_image(page)
 
         if not page.chars:
             return ExtractionResult(
@@ -282,6 +319,7 @@ def extract_document(pdf_path: Path, filename: Optional[str] = None) -> Extracti
                 ],
                 untrusted_instruction_text=untrusted_text,
                 contains_adversarial_text=untrusted_text is not None,
+                page_image_png=page_image_png,
             )
 
         label_page = page.filter(lambda o: o.get("object_type") != "char" or _is_label_char(o))
@@ -329,4 +367,5 @@ def extract_document(pdf_path: Path, filename: Optional[str] = None) -> Extracti
             contains_adversarial_text=untrusted_text is not None,
             needs_manual_entry=False,
             notes=notes,
+            page_image_png=page_image_png,
         )

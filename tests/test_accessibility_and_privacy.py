@@ -48,8 +48,8 @@ class ConsentGateTests(unittest.TestCase):
         pdf_path = DOCUMENTS_DIR / "hh-001_d01_application_summary.pdf"
         with pdf_path.open("rb") as fh:
             resp = client.post(
-                "/household/HH-CONSENT-TEST/documents",
-                files={"file": (pdf_path.name, fh, "application/pdf")},
+                "/household/HH-CONSENT-TEST/profile/upload",
+                files={"files": (pdf_path.name, fh, "application/pdf")},
             )
         self.assertEqual(resp.status_code, 200)
         self.assertIn("consent", resp.text.lower())
@@ -61,8 +61,8 @@ class ConsentGateTests(unittest.TestCase):
         pdf_path = DOCUMENTS_DIR / "hh-001_d01_application_summary.pdf"
         with pdf_path.open("rb") as fh:
             resp = client.post(
-                "/household/HH-CONSENT-TEST/documents",
-                files={"file": (pdf_path.name, fh, "application/pdf")},
+                "/household/HH-CONSENT-TEST/profile/upload",
+                files={"files": (pdf_path.name, fh, "application/pdf")},
                 data={"consent": "1"},
             )
         self.assertIn(resp.status_code, (200, 303))
@@ -80,8 +80,8 @@ class ActivityLogTests(unittest.TestCase):
         pdf_path = DOCUMENTS_DIR / "hh-001_d01_application_summary.pdf"
         with pdf_path.open("rb") as fh:
             client.post(
-                "/household/HH-ACTIVITY-TEST/documents",
-                files={"file": (pdf_path.name, fh, "application/pdf")},
+                "/household/HH-ACTIVITY-TEST/profile/upload",
+                files={"files": (pdf_path.name, fh, "application/pdf")},
                 data={"consent": "1"},
             )
         household = storage.get_household("HH-ACTIVITY-TEST")
