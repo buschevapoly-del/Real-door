@@ -29,6 +29,25 @@
 (function () {
   var dz = document.getElementById("dropzone");
   var input = document.getElementById("file-input");
+  var form = input.form;
+
+  function submitAsSoonAsChosen() {
+    // Auto-submit the moment files are picked (native dialog's "Open"/
+    // "Choose", or a drag-and-drop) instead of requiring a separate click
+    // on the Upload button. requestSubmit() still runs native validation,
+    // so a required-but-unchecked consent box just blocks with the usual
+    // browser prompt rather than silently uploading.
+    if (form.requestSubmit) {
+      form.requestSubmit();
+    } else {
+      form.submit();
+    }
+  }
+
+  input.addEventListener("change", function () {
+    if (input.files && input.files.length) submitAsSoonAsChosen();
+  });
+
   ["dragover", "dragleave", "drop"].forEach(function (evt) {
     dz.addEventListener(evt, function (e) { e.preventDefault(); e.stopPropagation(); });
   });
@@ -38,6 +57,7 @@
     dz.classList.remove("dragover");
     if (e.dataTransfer && e.dataTransfer.files.length) {
       input.files = e.dataTransfer.files;
+      submitAsSoonAsChosen();
     }
   });
 })();
