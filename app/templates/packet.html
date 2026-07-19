@@ -43,13 +43,21 @@
   <p class="empty">Exactly what's included if you download now -- the values you confirmed, not the original files.</p>
   {% for doc in confirmed_documents %}
   <div class="doc-preview">
-    <h4>{{ document_type_labels.get(doc.document_type, doc.document_type) }} <span class="muted">— {{ doc.file_name }}</span></h4>
+    <h4>{{ doc_preview_label(doc) }}</h4>
+    {% if doc.document_type in expired_document_types %}
+    <p class="doc-expired-note">⚠ This document is expired — see note above.</p>
+    {% endif %}
     <table class="fields">
       <tbody>
       {% for label, (field_name, kind) in field_map.get(doc.document_type, {}).items() %}
         {% set record = doc.fields.get(field_name) %}
         {% if record and record.value not in (None, "") %}
-        <tr><td>{{ field_labels.get(field_name, field_name) }}</td><td>{{ record.value }}</td></tr>
+        <tr><td>{{ field_labels.get(field_name, field_name) }}</td>
+            <td>
+              {% if field_name == 'hourly_rate' %}{{ format_hourly_rate(record.value) }}
+              {%- elif kind == 'money' %}{{ format_money(record.value) }}
+              {%- else %}{{ record.value }}{% endif %}
+            </td></tr>
         {% endif %}
       {% endfor %}
       </tbody>
@@ -61,13 +69,18 @@
 {% endif %}
 
 <div class="export-row">
-  <a href="/household/{{ household.household_id }}/export" class="button-link">Download your application packet</a>
+  <a href="/household/{{ household.household_id }}/export" class="button-link"
+     onclick="document.getElementById('download-confirm').hidden = false;">Download your application packet</a>
   <form method="post" action="/household/{{ household.household_id }}/delete_package" class="inline-form"
         onsubmit="return confirm('Delete this household package permanently?');">
     <button type="submit" class="danger-btn">Delete package</button>
   </form>
   <p class="empty">This package is only ever viewed, downloaded, or deleted by you. It is never submitted automatically.</p>
 </div>
+<p id="download-confirm" class="download-confirm" role="status" aria-live="polite" hidden>
+  ✅ Your packet has been downloaded. Bring this file to your appointment or send it to your housing agency —
+  RealDoor never sends it for you.
+</p>
 
 {% if household.consent_given %}
 <p class="consent-reminder">You agreed to how your data is used — <a href="/how-it-works">review again</a>.</p>

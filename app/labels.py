@@ -155,3 +155,69 @@ def format_timestamp(iso_string: str) -> str:
     except (ValueError, TypeError):
         return iso_string
     return dt.strftime("%b %-d, %Y, %-I:%M %p")
+
+
+# ---------------------------------------------------------------------------
+# Packet-preview gap closure: plain money formatting and a document label
+# that distinguishes same-type documents (e.g. two pay stubs) by date
+# instead of by their uploaded file name.
+# ---------------------------------------------------------------------------
+
+
+def format_money(value) -> str:
+    """"$1,768.00" instead of a raw float like 1768.0."""
+    try:
+        amount = float(value)
+    except (TypeError, ValueError):
+        return str(value)
+    return f"${amount:,.2f}"
+
+
+def format_hourly_rate(value) -> str:
+    return f"{format_money(value)}/hour"
+
+
+def format_short_date(iso_string: str) -> str:
+    try:
+        dt = datetime.fromisoformat(iso_string)
+    except (ValueError, TypeError):
+        return iso_string
+    return dt.strftime("%b %-d, %Y")
+
+
+def format_period_range(start_iso: str, end_iso: str) -> str:
+    """"Jun 10-23" (or "Jun 28-Jul 4" across a month boundary) so two pay
+    stubs of the same type read as two different pay periods, not
+    duplicates."""
+    try:
+        start = datetime.fromisoformat(start_iso)
+        end = datetime.fromisoformat(end_iso)
+    except (ValueError, TypeError):
+        return f"{start_iso} - {end_iso}"
+    if start.month == end.month:
+        return f"{start.strftime('%b %-d')}-{end.strftime('%-d')}"
+    return f"{start.strftime('%b %-d')}-{end.strftime('%b %-d')}"
+
+
+def doc_preview_label(doc: dict) -> str:
+    """Plain document type plus a short distinguishing detail (a pay
+    period or a document date) instead of the raw uploaded file name --
+    so a renter sees "Pay stub -- Jun 10-23", not "hh-005_d02_pay_stub.pdf"."""
+    document_type = doc.get("document_type") or ""
+    base = DOCUMENT_TYPE_LABELS.get(document_type, document_type.replace("_", " ").title() or "Document")
+    fields = doc.get("fields", {})
+    if document_type == "pay_stub":
+        start = fields.get("pay_period_start", {}).get("value")
+        end = fields.get("pay_period_end", {}).get("value")
+        if start and end:
+            return f"{base} — {format_period_range(start, end)}"
+    date_value = None
+    for date_field in ("document_date", "application_date", "statement_month"):
+        record = fields.get(date_field)
+        if record and record.get("value"):
+            date_value = record["value"]
+            break
+    if date_value:
+        formatted = format_short_date(date_value) if date_field != "statement_month" else date_value
+        return f"{base} — {formatted}"
+    return base

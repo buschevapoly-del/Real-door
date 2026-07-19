@@ -126,6 +126,65 @@ class ConsentReminderTests(unittest.TestCase):
         self.assertIn("review again", page)
 
 
+class PacketPreviewFormattingTests(unittest.TestCase):
+    """Follow-up gap closure: plain document labels (not file names), money
+    formatting, an in-table expired warning, and a post-download
+    confirmation region."""
+
+    def test_pay_stub_labels_distinguish_by_pay_period_not_file_name(self):
+        # HH-001 has two pay stubs covering different periods -- the preview
+        # must read as two distinct pay stubs, not two identical file names.
+        page = _confirm_household(
+            "HH-001", 1,
+            ["hh-001_d01_application_summary.pdf", "hh-001_d02_pay_stub.pdf",
+             "hh-001_d03_pay_stub.pdf", "hh-001_d04_employment_letter.pdf"],
+        )
+        preview_section = page.split("Preview your packet")[1].split("Download your application packet")[0]
+        self.assertIn("Pay stub — Jun 10-23", preview_section)
+        self.assertIn("Pay stub — Jun 3-16", preview_section)
+        self.assertNotIn(".pdf", preview_section)
+
+    def test_money_fields_show_dollar_sign_and_two_decimals(self):
+        page = _confirm_household(
+            "HH-001", 1,
+            ["hh-001_d01_application_summary.pdf", "hh-001_d02_pay_stub.pdf",
+             "hh-001_d03_pay_stub.pdf", "hh-001_d04_employment_letter.pdf"],
+        )
+        preview_section = page.split("Preview your packet")[1].split("Download your application packet")[0]
+        self.assertIn("$2,166.00", preview_section)
+        self.assertNotIn("2166.0<", preview_section)
+
+    def test_hourly_rate_shows_per_hour_suffix(self):
+        page = _confirm_household(
+            "HH-001", 1,
+            ["hh-001_d01_application_summary.pdf", "hh-001_d02_pay_stub.pdf",
+             "hh-001_d03_pay_stub.pdf", "hh-001_d04_employment_letter.pdf"],
+        )
+        preview_section = page.split("Preview your packet")[1].split("Download your application packet")[0]
+        self.assertIn("$28.50/hour", preview_section)
+
+    def test_expired_document_gets_inline_warning_in_preview_table(self):
+        page = _confirm_household(
+            "HH-005", 5,
+            ["hh-005_d01_application_summary.pdf", "hh-005_d02_pay_stub.pdf",
+             "hh-005_d03_pay_stub.pdf", "hh-005_d04_employment_letter.pdf"],
+        )
+        preview_section = page.split("Preview your packet")[1].split("Download your application packet")[0]
+        self.assertIn("This document is expired", preview_section)
+
+    def test_download_confirmation_region_present_and_announced(self):
+        page = _confirm_household(
+            "HH-001", 1,
+            ["hh-001_d01_application_summary.pdf", "hh-001_d02_pay_stub.pdf",
+             "hh-001_d03_pay_stub.pdf", "hh-001_d04_employment_letter.pdf"],
+        )
+        self.assertIn('aria-live="polite"', page)
+        self.assertIn("Your packet has been downloaded", page)
+        self.assertIn("RealDoor never sends it for you", page)
+        # Hidden until the download link is actually clicked.
+        self.assertIn('id="download-confirm"', page)
+
+
 class DevToolsSeparationTests(unittest.TestCase):
     def test_household_test_fixture_list_not_next_to_switcher_field(self):
         page = _confirm_household(

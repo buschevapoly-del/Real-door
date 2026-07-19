@@ -43,6 +43,9 @@ from app.labels import (
     reason_code_label,
     activity_label,
     format_timestamp,
+    format_money,
+    format_hourly_rate,
+    doc_preview_label,
 )
 from app.qa import answer_question
 from app.safety import DISCLAIMER_60_DAY_CONVENTION, DISCLAIMER_NO_DECISION
@@ -120,6 +123,9 @@ templates.env.globals.update(
     reason_code_label=reason_code_label,
     activity_label=activity_label,
     format_timestamp=format_timestamp,
+    format_money=format_money,
+    format_hourly_rate=format_hourly_rate,
+    doc_preview_label=doc_preview_label,
 )
 
 EXPORTS_DIR = DATA_DIR / "exports"

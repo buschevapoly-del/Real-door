@@ -204,6 +204,15 @@ table.fields th, table.fields td { text-align: left; padding: 0.35rem 0.5rem; bo
 .doc-preview h4 { margin: 0 0 0.3rem; font-size: 0.95rem; }
 .doc-preview .muted { color: var(--muted); font-weight: normal; }
 .consent-reminder { font-size: 0.85rem; color: var(--muted); margin-top: 1rem; }
+.doc-expired-note { font-size: 0.8rem; color: var(--warn-fg); font-weight: 600; margin: 0 0 0.4rem; }
+.download-confirm {
+  margin-top: 0.75rem;
+  padding: 0.6rem 0.8rem;
+  border-radius: 0.4rem;
+  background: var(--ok-bg);
+  color: var(--ok-fg);
+  font-size: 0.9rem;
+}
 
 /* Dev/test tools footer -- kept visually separate from the renter's flow */
 .dev-tools {
