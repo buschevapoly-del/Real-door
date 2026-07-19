@@ -36,7 +36,6 @@ def _confirm_household(household_id: str, size: int, filenames: list) -> dict:
     through with blank inputs, so scenarios like an expired document are
     reproduced faithfully rather than silently skipped."""
     storage.delete_household(household_id)
-    client.post(f"/household/{household_id}/size", data={"household_size": size})
     files = [("files", (n, (DOCUMENTS_DIR / n).read_bytes(), "application/pdf")) for n in filenames]
     client.post(f"/household/{household_id}/profile/upload", files=files, data={"consent": "1"})
 
@@ -52,6 +51,10 @@ def _confirm_household(household_id: str, size: int, filenames: list) -> dict:
                 continue
             form[f"{f['field']}__{doc_id}"] = str(f["value"])
     client.post(f"/household/{household_id}/profile/confirm", data=form)
+    # `size` documents the fixture's expected household size (matching its
+    # application_summary) -- household size propagates from that
+    # confirmed document rather than being set separately.
+    assert storage.get_household(household_id)["household_size"] == size
     return html.unescape(client.get(f"/household/{household_id}/summary").text)
 
 

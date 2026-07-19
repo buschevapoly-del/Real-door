@@ -26,7 +26,6 @@ HH = "HH-APP-STRUCTURE-TEST"
 
 def _confirm_one_document(household_id: str) -> None:
     storage.delete_household(household_id)
-    client.post(f"/household/{household_id}/size", data={"household_size": 1})
     pdf = DOCUMENTS_DIR / "hh-001_d01_application_summary.pdf"
     client.post(
         f"/household/{household_id}/profile/upload",
@@ -64,7 +63,6 @@ class WelcomeScreenTests(unittest.TestCase):
 class StageIndicatorTests(unittest.TestCase):
     def setUp(self):
         storage.delete_household(HH)
-        client.post(f"/household/{HH}/size", data={"household_size": 1})
 
     def test_stage_indicator_present_on_upload_review_confirm_as_stage_one(self):
         for path in ("/profile", "/profile/review", "/profile/confirm"):
@@ -86,7 +84,6 @@ class StageIndicatorTests(unittest.TestCase):
 class ForwardNavGatingTests(unittest.TestCase):
     def setUp(self):
         storage.delete_household(HH)
-        client.post(f"/household/{HH}/size", data={"household_size": 1})
 
     def test_summary_is_blocked_with_zero_confirmed_documents(self):
         resp = client.get(f"/household/{HH}/summary", follow_redirects=False)

@@ -31,7 +31,6 @@ MANUAL_ENTRY_PDF = "hh-001_d02_pay_stub.pdf"
 class ConfirmCompletenessTests(unittest.TestCase):
     def setUp(self):
         storage.delete_household(HH)
-        client.post(f"/household/{HH}/size", data={"household_size": 1})
         pdf = DOCUMENTS_DIR / MANUAL_ENTRY_PDF
         client.post(
             f"/household/{HH}/profile/upload",

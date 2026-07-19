@@ -34,9 +34,10 @@ def _load_gold_by_household():
 
 
 def _run_household(household_id: str, size: int, documents: list) -> dict:
-    resp = client.post(f"/household/{household_id}/size", data={"household_size": size})
-    assert resp.status_code in (200, 303)
-
+    # No separate household-size step: household size is now confirmed
+    # like any other extracted field, from the application_summary
+    # document included in `documents` below -- the "size" gold value
+    # (checked below) must match what that document's own field states.
     ordered_gold = sorted(documents, key=lambda d: d["document_id"])
     files = [
         ("files", (g["file_name"], (DOCUMENTS_DIR / g["file_name"]).read_bytes(), "application/pdf"))
@@ -61,6 +62,10 @@ def _run_household(household_id: str, size: int, documents: list) -> dict:
             form[f"{f['field']}__{doc_id}"] = str(f["value"])
     resp = client.post(f"/household/{household_id}/profile/confirm", data=form)
     assert resp.status_code in (200, 303)
+
+    assert storage.get_household(household_id)["household_size"] == size, (
+        "household size should have propagated from the confirmed application_summary"
+    )
 
     return client.get(f"/household/{household_id}/submission.json").json()
 

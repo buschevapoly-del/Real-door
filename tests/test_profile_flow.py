@@ -26,7 +26,6 @@ HH = "HH-PROFILE-FLOW-TEST"
 class MultiFileUploadTests(unittest.TestCase):
     def setUp(self):
         storage.delete_household(HH)
-        client.post(f"/household/{HH}/size", data={"household_size": 1})
 
     def test_multiple_files_upload_in_one_action(self):
         names = ["hh-001_d01_application_summary.pdf", "hh-003_d02_pay_stub.pdf", "hh-001_d04_employment_letter.pdf"]
@@ -50,7 +49,6 @@ class MultiFileUploadTests(unittest.TestCase):
 class PlainLanguageTests(unittest.TestCase):
     def setUp(self):
         storage.delete_household(HH)
-        client.post(f"/household/{HH}/size", data={"household_size": 1})
         pdf = DOCUMENTS_DIR / "hh-003_d02_pay_stub.pdf"
         client.post(
             f"/household/{HH}/profile/upload",
@@ -97,7 +95,6 @@ class PlainLanguageTests(unittest.TestCase):
 class ViewSourceImageTests(unittest.TestCase):
     def setUp(self):
         storage.delete_household(HH)
-        client.post(f"/household/{HH}/size", data={"household_size": 1})
         pdf = DOCUMENTS_DIR / "hh-003_d02_pay_stub.pdf"
         client.post(
             f"/household/{HH}/profile/upload",
@@ -123,9 +120,11 @@ class ViewSourceImageTests(unittest.TestCase):
 class ConfirmGateTests(unittest.TestCase):
     def setUp(self):
         storage.delete_household(HH)
-        client.post(f"/household/{HH}/size", data={"household_size": 1})
 
     def test_confirming_moves_data_into_module_2(self):
+        # No application_summary uploaded here -- household size comes
+        # through the standalone "Household size" field on Confirm instead
+        # (the same fallback a no-application-summary household always gets).
         pdf = DOCUMENTS_DIR / "hh-003_d02_pay_stub.pdf"
         client.post(
             f"/household/{HH}/profile/upload",
@@ -136,8 +135,12 @@ class ConfirmGateTests(unittest.TestCase):
         self.assertIn("error", before)
 
         confirm_page = client.get(f"/household/{HH}/profile/confirm").text
+        self.assertIn('name="household_size"', confirm_page)
         doc_id = re.findall(r'name="document_type__([^"]+)"', confirm_page)[0]
-        resp = client.post(f"/household/{HH}/profile/confirm", data={f"confirm__{doc_id}": "1"})
+        resp = client.post(
+            f"/household/{HH}/profile/confirm",
+            data={f"confirm__{doc_id}": "1", "household_size": "1"},
+        )
         self.assertIn(resp.status_code, (200, 303))
 
         after = client.get(f"/household/{HH}/submission.json").json()["submission"]

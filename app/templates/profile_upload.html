@@ -6,27 +6,6 @@
 
 <h2>Upload your documents</h2>
 
-{% if not household.household_size %}
-<form method="post" action="/household/{{ household.household_id }}/size" class="inline-form">
-  <label>How many people are in your household? (used to find the right income limit)
-    <input type="number" name="household_size" min="1" required>
-  </label>
-  <button type="submit">Save</button>
-</form>
-{% else %}
-<p>Household size on file: <strong>{{ household.household_size }}</strong>
-  (<a href="#change-size">change</a>)</p>
-<details id="change-size">
-  <summary>Change household size</summary>
-  <form method="post" action="/household/{{ household.household_id }}/size" class="inline-form">
-    <label>Number of people in your household:
-      <input type="number" name="household_size" min="1" value="{{ household.household_size }}" required>
-    </label>
-    <button type="submit">Save</button>
-  </form>
-</details>
-{% endif %}
-
 <form method="post" action="/household/{{ household.household_id }}/profile/upload" enctype="multipart/form-data">
   <label for="file-input">Upload your documents (pay stubs, employment letters, benefit letters)</label>
   <input id="file-input" type="file" name="files" accept="application/pdf" multiple required>

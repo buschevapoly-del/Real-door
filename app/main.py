@@ -56,8 +56,8 @@ FIELD_PURPOSES = {
     "application_summary": {
         "person_name": "Shown for your own review; not used in the income calculation.",
         "household_size": (
-            "Shown for your own review only. The household size actually used in the "
-            "calculation is the value you enter separately, not this extracted field."
+            "Used to find your income limit, once you confirm it on the Confirm screen. "
+            "If we can't read it automatically, you'll be asked to enter it yourself there."
         ),
         "address": "Shown for your own review; not used in the income calculation.",
         "application_date": "Used to check this document's 60-day currency window.",
@@ -100,7 +100,6 @@ FIELD_PURPOSES = {
 }
 
 FLASH_MESSAGES = {
-    "size_saved": "Household size saved.",
     "doc_deleted": "Document deleted.",
     "confirmed": "Documents confirmed.",
 }
@@ -261,6 +260,10 @@ def _common_context(request: Request, household_id: str, **extra) -> dict:
     }
 
 
+def _has_application_summary(household: dict) -> bool:
+    return any(d["document_type"] == "application_summary" for d in household["documents"].values())
+
+
 def _render_profile_screen(request: Request, household_id: str, template_name: str, **extra):
     household = storage.get_household(household_id)
     context = _common_context(
@@ -273,6 +276,7 @@ def _render_profile_screen(request: Request, household_id: str, template_name: s
         document_types=DOCUMENT_TYPES,
         field_map=FIELD_MAP,
         confidence_state=confidence_state,
+        show_standalone_household_size=not _has_application_summary(household),
         **extra,
     )
     return templates.TemplateResponse(request, template_name, context)
@@ -332,12 +336,6 @@ def household_page(household_id: str):
     if household["household_size"] and _confirmed(household):
         return RedirectResponse(url=f"/household/{household_id}/summary")
     return RedirectResponse(url=f"/household/{household_id}/profile")
-
-
-@app.post("/household/{household_id}/size")
-def set_size(household_id: str, household_size: int = Form(...)):
-    storage.set_household_size(household_id, household_size)
-    return RedirectResponse(url=f"/household/{household_id}/profile?flash=size_saved", status_code=303)
 
 
 # ---------------------------------------------------------------------------
@@ -401,6 +399,22 @@ def profile_confirm(request: Request, household_id: str):
 async def profile_confirm_post(request: Request, household_id: str):
     form = await request.form()
     household = storage.get_household(household_id)
+
+    # Household size is no longer a separate pre-upload step -- it's the
+    # confirmed application_summary's household_size field (see the
+    # propagation below), following the exact same extract/confirm
+    # mechanism as any other field. The only household without an
+    # application_summary at all gets a standalone input right here on
+    # Confirm, for exactly the same reason a rasterized document needs
+    # manual entry: nothing to read the number from automatically.
+    if not _has_application_summary(household):
+        standalone_size = form.get("household_size", "").strip()
+        if standalone_size:
+            try:
+                storage.set_household_size(household_id, int(standalone_size))
+            except ValueError:
+                pass
+
     incomplete_documents = {}
     for doc_id in list(household["documents"].keys()):
         doc = household["documents"][doc_id]
@@ -433,6 +447,16 @@ async def profile_confirm_post(request: Request, household_id: str):
             incomplete_documents[doc_id] = missing
             continue
         storage.confirm_document(household_id, doc_id)
+        # A confirmed application_summary is the single source of truth for
+        # household size -- propagate it the first time one is confirmed.
+        # If the household already has a size on file (e.g. entered by hand
+        # because no application summary existed yet), a later application
+        # summary doesn't silently overwrite an already-confirmed value;
+        # household_size_note explains any divergence instead.
+        if doc_type_for_fields == "application_summary" and not storage.get_household(household_id)["household_size"]:
+            size_value = doc["fields"].get("household_size", {}).get("value")
+            if size_value:
+                storage.set_household_size(household_id, int(size_value))
     if incomplete_documents:
         return _render_profile_screen(
             request,

@@ -108,7 +108,6 @@ class AccessibilityMarkerTests(unittest.TestCase):
         # The packet screen is gated on having at least one confirmed
         # document, so seed one before checking its markup.
         storage.delete_household("HH-A11Y-TEST")
-        client.post("/household/HH-A11Y-TEST/size", data={"household_size": 1})
         pdf_path = DOCUMENTS_DIR / "hh-001_d01_application_summary.pdf"
         with pdf_path.open("rb") as fh:
             client.post(

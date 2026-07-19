@@ -36,11 +36,22 @@ with DOCUMENT_GOLD_PATH.open() as _f:
     _GOLD_BY_FILENAME = {g["file_name"]: g for g in (json.loads(l) for l in _f if l.strip())}
 
 
-def _upload_and_confirm(household_id, size, filenames, skip_filenames=()):
+def _upload_and_confirm(household_id, filenames, skip_filenames=(), preset_household_size=None):
     """Confirm every file in `filenames` except those in `skip_filenames`,
-    which are uploaded but deliberately left blank on the confirm form."""
+    which are uploaded but deliberately left blank on the confirm form.
+
+    `preset_household_size`, when given, sets the household size directly
+    at the storage layer *before* upload -- simulating a household that
+    already had a size on file from an earlier no-application-summary
+    session. Household size no longer has an HTTP endpoint of its own: it
+    comes from the confirmed application_summary field (propagated after
+    confirm, the first time one is confirmed), or the standalone
+    "Household size" field on Confirm when there's no application_summary
+    at all.
+    """
     storage.delete_household(household_id)
-    client.post(f"/household/{household_id}/size", data={"household_size": size})
+    if preset_household_size is not None:
+        storage.set_household_size(household_id, preset_household_size)
     files = [("files", (n, (DOCUMENTS_DIR / n).read_bytes(), "application/pdf")) for n in filenames]
     client.post(f"/household/{household_id}/profile/upload", files=files, data={"consent": "1"})
 
@@ -68,21 +79,33 @@ HH_001_FILES = [
 
 
 class HouseholdSizeClarityTests(unittest.TestCase):
+    """Since household size is now sourced from the confirmed
+    application_summary itself, a mismatch can only happen in the one
+    residual case the architecture explicitly preserves: a household that
+    already had a size on file (e.g. entered by hand in an earlier,
+    application-summary-less session) before an application_summary with a
+    *different* number gets confirmed. Propagation only fires the first
+    time (see profile_confirm_post), so the earlier, already-confirmed
+    value is never silently overwritten -- this note is what explains the
+    resulting divergence instead of just showing two numbers.
+    """
+
     def test_no_note_when_entered_size_matches_document(self):
-        # HH-001's application_summary states household_size 1.
-        _upload_and_confirm(HH, 1, HH_001_FILES)
+        # HH-001's application_summary states household_size 1 -- nothing
+        # preset, so it propagates from the document with no divergence.
+        _upload_and_confirm(HH, HH_001_FILES)
         body = client.get(f"/household/{HH}/export").text
         self.assertNotIn("RealDoor used the number you entered", body)
 
     def test_note_appears_when_entered_size_differs_from_document(self):
-        _upload_and_confirm(HH, 4, HH_001_FILES)
+        _upload_and_confirm(HH, HH_001_FILES, preset_household_size=4)
         body = client.get(f"/household/{HH}/export").text
         self.assertIn("RealDoor used the number you entered -- 4", body)
         self.assertIn("Income limit for a household of 4", body)
         self.assertIn("Number of people in your household: 1", body)
 
     def test_note_also_shown_in_preview_on_packet_screen(self):
-        _upload_and_confirm(HH, 4, HH_001_FILES)
+        _upload_and_confirm(HH, HH_001_FILES, preset_household_size=4)
         page = client.get(f"/household/{HH}/packet").text
         page = page.replace("&#39;", "'").replace("&amp;", "&")
         self.assertIn("RealDoor used the number you entered", page)
@@ -102,7 +125,7 @@ class BrokenConfirmedDocumentSelfHealingTests(unittest.TestCase):
     # "still shows Present via the good copy" assertion below.
     def setUp(self):
         self.doc_ids_by_filename = _upload_and_confirm(
-            "HH-001", 1, HH_001_FILES, skip_filenames=["hh-001_d02_pay_stub.pdf"]
+            "HH-001", HH_001_FILES, skip_filenames=["hh-001_d02_pay_stub.pdf"]
         )
         broken_doc_id = self.doc_ids_by_filename["hh-001_d02_pay_stub.pdf"]
         storage.confirm_document("HH-001", broken_doc_id)
@@ -138,7 +161,7 @@ class ReasonSpecificityTests(unittest.TestCase):
         # requires gross_pay, but doc_preview_label can still read a pay
         # period from the dates that *are* there, so the reason can name it.
         storage.delete_household(HH)
-        client.post(f"/household/{HH}/size", data={"household_size": 1})
+        storage.set_household_size(HH, 1)
         pdf = DOCUMENTS_DIR / "hh-001_d02_pay_stub.pdf"
         client.post(
             f"/household/{HH}/profile/upload",
@@ -162,7 +185,7 @@ class ReasonSpecificityTests(unittest.TestCase):
 
     def test_incomplete_reason_gives_actionable_guidance_when_nothing_can_be_named(self):
         self.doc_ids_by_filename = _upload_and_confirm(
-            HH, 1, HH_001_FILES, skip_filenames=["hh-001_d02_pay_stub.pdf"]
+            HH, HH_001_FILES, skip_filenames=["hh-001_d02_pay_stub.pdf"]
         )
         broken_doc_id = self.doc_ids_by_filename["hh-001_d02_pay_stub.pdf"]
         storage.confirm_document(HH, broken_doc_id)
