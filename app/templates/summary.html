@@ -1,0 +1,100 @@
+{% extends "base.html" %}
+{% block title %}RealDoor — Your income summary{% endblock %}
+{% block content %}
+{% include "_stage_indicator.html" %}
+
+<h2>Your income summary</h2>
+
+{% if submission %}
+<div class="summary-card">
+  <p class="big-figure">${{ '{:,.2f}'.format(submission.annualized_income) }} <span class="unit">a year</span></p>
+  {% if submission.threshold %}
+  <p>Income limit for a household of {{ submission.threshold.household_size }}:
+     ${{ '{:,.0f}'.format(submission.threshold.income_limit_60_percent) }} a year</p>
+  <details class="info-toggle">
+    <summary>How is this limit determined?</summary>
+    <p>It's the maximum yearly income allowed for your household size, based on HUD's published limits for your area.
+      {% if submission.threshold.source_url %}<a href="{{ submission.threshold.source_url }}" target="_blank" rel="noopener">Source</a>{% endif %}</p>
+  </details>
+  {% endif %}
+  <p>{{ comparison_labels.get(submission.comparison, submission.comparison) }}.</p>
+
+  <p><span class="status {{ submission.readiness_status|lower }}">
+    {{ readiness_labels.get(submission.readiness_status, submission.readiness_status) }}
+  </span></p>
+  {% if submission.review_reasons %}
+    <ul>{% for r in submission.review_reasons %}<li>{{ reason_display_text(r, household) }}</li>{% endfor %}</ul>
+  {% endif %}
+
+  <table class="fields">
+    <thead><tr><th>Document</th><th>How we calculated it</th><th>Yearly amount</th></tr></thead>
+    <tbody>
+    {% for line in income_lines_display %}
+      <tr><td>{{ line.display_label }}</td>
+          <td>{{ line.formula }}</td>
+          <td>${{ '{:,.2f}'.format(line.annual_amount) }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+
+  <details class="show-details">
+    <summary>Show calculation details</summary>
+    <p class="provenance">{{ sixty_day_disclaimer }} Event date: {{ event_date }}. Window: {{ currency_window_days }} days.</p>
+    <h3>Citations</h3>
+    <p class="provenance">Rule corpus version: <code>{{ submission.rule_corpus_version }}</code></p>
+    <ul class="citations">
+    {% for c in submission.citations %}
+      {% if c.type == 'rule' %}
+        <li><code>{{ c.rule_id }}</code> — {{ c.text }} (<a href="{{ c.source_url }}" target="_blank" rel="noopener">source</a>, effective {{ c.effective_date }})</li>
+      {% else %}
+        <li><code>{{ c.document_id }}</code> field <code>{{ c.field }}</code> — page {{ c.page }}, bbox {{ c.bbox }}</li>
+      {% endif %}
+    {% endfor %}
+    </ul>
+    <a href="/household/{{ household.household_id }}/submission.json" target="_blank">View raw submission JSON</a>
+  </details>
+</div>
+{% else %}
+<p class="empty">Confirm your household size (on the Confirm screen) to see the calculation.</p>
+{% endif %}
+
+<h3>Common questions about the rules</h3>
+<ul class="faq-list">
+  {% for item in faq_items %}
+  <li class="faq-item">
+    <details>
+      <summary>{{ item.question }}</summary>
+      <div class="faq-answer">
+        <p>{{ item.answer.answer }}</p>
+        {% if item.answer.citations %}
+        <a href="{{ item.answer.citations[0].source_url }}" target="_blank" rel="noopener">Source</a>
+        {% endif %}
+      </div>
+    </details>
+  </li>
+  {% endfor %}
+</ul>
+
+<p class="faq-prompt">Don't see your question? Ask below.</p>
+<form method="post" action="/household/{{ household.household_id }}/qa" class="inline-form">
+  <input type="text" name="question" placeholder="e.g. What if my hours change?" value="{{ qa_question or '' }}" required style="width: 20rem;">
+  <button type="submit">Ask</button>
+</form>
+{% if qa_answer %}
+<div class="qa-answer {{ 'refused' if qa_answer.refused else '' }}" aria-live="polite">
+  <p>{{ qa_answer.answer }}</p>
+  {% if qa_answer.citations %}
+  <ul class="citations">
+    {% for c in qa_answer.citations %}
+      <li><code>{{ c.rule_id }}</code> — {{ c.text }} (<a href="{{ c.source_url }}" target="_blank" rel="noopener">source</a>, effective {{ c.effective_date }})</li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+</div>
+{% endif %}
+
+<div class="screen-nav">
+  <a href="/household/{{ household.household_id }}/profile" class="button-link secondary">Back</a>
+  <a href="/household/{{ household.household_id }}/packet" class="button-link">Continue to your application packet</a>
+</div>
+{% endblock %}

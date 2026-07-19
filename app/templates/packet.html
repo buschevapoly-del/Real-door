@@ -1,0 +1,107 @@
+{% extends "base.html" %}
+{% block title %}RealDoor — Your application packet{% endblock %}
+{% block content %}
+{% include "_stage_indicator.html" %}
+
+<h2>Your application packet</h2>
+<p class="lede">Here's what's included in your packet:</p>
+
+{% if checklist %}
+<table class="fields">
+  <thead><tr><th>Required document type</th><th>Status</th></tr></thead>
+  <tbody>
+  {% for dt in checklist.required %}
+    <tr><td>{{ document_type_labels.get(dt, dt) }}</td>
+        <td>
+          {% if dt in checklist.missing %}
+            <span class="badge warn">⚠ Missing</span>
+            <div class="status-reason">We don't have this yet.</div>
+          {% elif dt in expired_document_types %}
+            <span class="badge warn">⚠ Expired</span>
+            <div class="status-reason">This is older than 60 days and needs a newer copy.</div>
+          {% else %}
+            <span class="badge ok">✓ Present</span>
+          {% endif %}
+        </td></tr>
+  {% endfor %}
+  {% for dt in checklist.extra %}
+    <tr><td>{{ document_type_labels.get(dt, dt) }} (not on required list)</td><td><span class="badge">Extra</span></td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% if checklist.missing or expired_document_types %}
+<p class="fix-hint">Need to fix something? <a href="/household/{{ household.household_id }}/profile">Go back and edit</a>.</p>
+{% endif %}
+{% else %}
+<p class="empty">Confirm your household size (on the Confirm screen) to see the required-document checklist.</p>
+{% endif %}
+
+{% if confirmed_documents %}
+<details class="show-details">
+  <summary>Preview your packet</summary>
+  <p class="empty">Exactly what's in your PDF -- the values you confirmed, not the original files.</p>
+  {% for doc in confirmed_documents %}
+  <div class="doc-preview">
+    <h4>{{ doc_preview_label(doc) }}</h4>
+    {% if doc.document_type in expired_document_types %}
+    <p class="doc-expired-note">⚠ This document is expired — see note above.</p>
+    {% endif %}
+    <table class="fields">
+      <tbody>
+      {% for label, (field_name, kind) in field_map.get(doc.document_type, {}).items() %}
+        {% set record = doc.fields.get(field_name) %}
+        {% if record and record.value not in (None, "") %}
+        {% set size_note = household_size_note(household, field_name, record.value) %}
+        <tr><td>{{ field_labels.get(field_name, field_name) }}</td>
+            <td>
+              {% if field_name == 'hourly_rate' %}{{ format_hourly_rate(record.value) }}
+              {%- elif kind == 'money' %}{{ format_money(record.value) }}
+              {%- else %}{{ record.value }}{% endif %}
+              {% if size_note %}<br><span class="status-reason">{{ size_note }}</span>{% endif %}
+            </td></tr>
+        {% endif %}
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endfor %}
+  <p class="fix-hint">Need to fix a value? <a href="/household/{{ household.household_id }}/profile">Go back and edit</a>.</p>
+</details>
+{% endif %}
+
+<div class="export-row">
+  <a href="/household/{{ household.household_id }}/export" class="button-link"
+     onclick="document.getElementById('download-confirm').hidden = false;">Download your application packet</a>
+  <form method="post" action="/household/{{ household.household_id }}/delete_package" class="inline-form"
+        onsubmit="return confirm('Delete this household package permanently?');">
+    <button type="submit" class="danger-btn">Delete package</button>
+  </form>
+</div>
+<p class="reassurance">🔒 This package is only ever viewed, downloaded, or deleted by you. It's never submitted automatically. Bring it to your appointment or send it to your housing agency yourself.</p>
+<p id="download-confirm" class="download-confirm" role="status" aria-live="polite" hidden>
+  ✅ Your packet has been downloaded. Bring this file to your appointment or send it to your housing agency —
+  RealDoor never sends it for you.
+</p>
+
+<div class="page-footer-block">
+  <p><a href="/household/{{ household.household_id }}/export/technical">Technical export (JSON, for verification)</a></p>
+  {% if household.consent_given %}
+  <p>You agreed to how your data is used — <a href="/how-it-works">review again</a></p>
+  {% endif %}
+  {% if household.activity_log %}
+  <details class="show-details">
+    <summary>Show activity history</summary>
+    <p class="empty">What happened, when -- not document contents or corrected values. Deleted along with the package.</p>
+    <ul class="citations">
+      {% for entry in household.activity_log %}
+      <li>{{ format_timestamp(entry.timestamp) }} — {{ activity_label(entry) }}</li>
+      {% endfor %}
+    </ul>
+  </details>
+  {% endif %}
+</div>
+
+<div class="screen-nav">
+  <a href="/household/{{ household.household_id }}/summary" class="button-link secondary">Back</a>
+</div>
+{% endblock %}

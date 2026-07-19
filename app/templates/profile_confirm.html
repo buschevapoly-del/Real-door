@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+{% block title %}RealDoor — Confirm your documents{% endblock %}
+{% block content %}
+{% include "_stage_indicator.html" %}
+
+<h2>Confirm your documents</h2>
+<p>Check every value below and fix anything that's wrong. Nothing is used in your calculation until you confirm.</p>
+
+{% set incomplete_documents = incomplete_documents or {} %}
+{% if not unconfirmed_documents %}
+<p class="empty">Nothing to confirm right now. <a href="/household/{{ household.household_id }}/profile">Upload a document</a> first.</p>
+{% else %}
+<form method="post" action="/household/{{ household.household_id }}/profile/confirm">
+  {% if show_standalone_household_size %}
+  <article class="doc-card">
+    <h3>Household size</h3>
+    <p class="empty">We don't have an application summary to read this from -- please enter it yourself.</p>
+    <table class="fields">
+      <tbody>
+        <tr>
+          <td>
+            Number of people in your household
+            <br><span class="badge unread">We couldn't read this automatically -- please check and enter it yourself.</span>
+          </td>
+          <td><input type="number" min="1" name="household_size" value="{{ household.household_size or '' }}"></td>
+        </tr>
+      </tbody>
+    </table>
+  </article>
+  {% endif %}
+  {% for doc in unconfirmed_documents %}
+  {% set missing_fields = incomplete_documents.get(doc.document_id, []) %}
+  <article class="doc-card {{ 'incomplete' if missing_fields else '' }}">
+    <div class="doc-head">
+      <img src="/household/{{ household.household_id }}/documents/{{ doc.document_id }}/image" alt="" class="thumb">
+      <strong>{{ doc.file_name }}</strong>
+    </div>
+    {% if missing_fields %}
+    <p class="status-reason">⚠ Please fill in every highlighted field below before confirming.</p>
+    {% endif %}
+
+    <label>Document type:
+      <select name="document_type__{{ doc.document_id }}">
+        <option value="">-- select --</option>
+        {% for dt in document_types %}
+        <option value="{{ dt }}" {{ 'selected' if doc.document_type == dt else '' }}>{{ document_type_labels.get(dt, dt) }}</option>
+        {% endfor %}
+      </select>
+    </label>
+
+    {% if doc.document_type and field_map.get(doc.document_type) %}
+    <table class="fields">
+      <thead><tr><th>Field</th><th>Value</th></tr></thead>
+      <tbody>
+      {% for label, (field_name, kind) in field_map[doc.document_type].items() %}
+        {% set record = doc.fields.get(field_name) %}
+        {% set cs = confidence_state(record) if record else None %}
+        <tr>
+          <td>
+            {{ field_labels.get(field_name, field_name) }}
+            {% if cs %}<br><span class="badge {{ cs.state }}">{{ cs.message }}</span>{% endif %}
+          </td>
+          <td><input name="{{ field_name }}__{{ doc.document_id }}" value="{{ record.value if record else '' }}"
+                     class="{{ 'field-missing' if field_name in missing_fields else '' }}"
+                     aria-invalid="{{ 'true' if field_name in missing_fields else 'false' }}"></td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    {% endif %}
+  </article>
+  {% endfor %}
+
+  <button type="submit">Confirm and continue</button>
+</form>
+{% endif %}
+
+<div class="inline-form">
+  <a href="/household/{{ household.household_id }}/profile/review" class="button-link secondary">Back</a>
+</div>
+{% endblock %}

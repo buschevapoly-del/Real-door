@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>{% block title %}RealDoor{% endblock %}</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<header>
+  <h1>RealDoor</h1>
+  <p class="tagline">Get your documents organized and your income checked before you meet with your housing caseworker.</p>
+  <p><a href="/how-it-works">How this works &amp; what data we use</a></p>
+</header>
+
+{% block banners %}
+<div class="banner">{{ no_decision_disclaimer }}</div>
+{% endblock %}
+
+<main>
+{% if flash_message %}
+<div class="flash" role="status">{{ flash_message }}</div>
+{% endif %}
+{% if consent_error %}
+<div class="alert danger" role="alert">{{ consent_error }}</div>
+{% endif %}
+{% if confirm_error %}
+<div class="alert danger" role="alert">{{ confirm_error }}</div>
+{% endif %}
+{% block content %}{% endblock %}
+</main>
+
+{% block dev_tools %}
+<footer class="dev-tools">
+  <p class="dev-tools-label">Developer / test tools</p>
+  {% if household %}
+  <form class="switcher" method="get" action="/household/{{ household.household_id }}"
+        onsubmit="event.preventDefault(); window.location = '/household/' + document.getElementById('hh-switch').value;">
+    <label>Household: <input id="hh-switch" value="{{ household.household_id }}"></label>
+    <button type="submit">Open</button>
+  </form>
+  {% endif %}
+  {% if all_households %}
+  <p class="known">{% for h in all_households %}<a href="/household/{{ h }}">{{ h }}</a>{% if not loop.last %}, {% endif %}{% endfor %}</p>
+  {% endif %}
+</footer>
+{% endblock %}
+</body>
+</html>
