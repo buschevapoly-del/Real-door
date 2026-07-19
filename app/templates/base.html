@@ -24,6 +24,9 @@
 {% if consent_error %}
 <div class="alert danger" role="alert">{{ consent_error }}</div>
 {% endif %}
+{% if confirm_error %}
+<div class="alert danger" role="alert">{{ confirm_error }}</div>
+{% endif %}
 {% block content %}{% endblock %}
 </main>
 

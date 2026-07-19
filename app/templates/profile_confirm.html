@@ -7,16 +7,21 @@
 <h2>Confirm your documents</h2>
 <p>Check every value below and fix anything that's wrong. Nothing is used in your calculation until you confirm.</p>
 
+{% set incomplete_documents = incomplete_documents or {} %}
 {% if not unconfirmed_documents %}
 <p class="empty">Nothing to confirm right now. <a href="/household/{{ household.household_id }}/profile">Upload a document</a> first.</p>
 {% else %}
 <form method="post" action="/household/{{ household.household_id }}/profile/confirm">
   {% for doc in unconfirmed_documents %}
-  <article class="doc-card">
+  {% set missing_fields = incomplete_documents.get(doc.document_id, []) %}
+  <article class="doc-card {{ 'incomplete' if missing_fields else '' }}">
     <div class="doc-head">
       <img src="/household/{{ household.household_id }}/documents/{{ doc.document_id }}/image" alt="" class="thumb">
       <strong>{{ doc.file_name }}</strong>
     </div>
+    {% if missing_fields %}
+    <p class="status-reason">⚠ Please fill in every highlighted field below before confirming.</p>
+    {% endif %}
 
     <label>Document type:
       <select name="document_type__{{ doc.document_id }}">
@@ -39,7 +44,9 @@
             {{ field_labels.get(field_name, field_name) }}
             {% if cs %}<br><span class="badge {{ cs.state }}">{{ cs.message }}</span>{% endif %}
           </td>
-          <td><input name="{{ field_name }}__{{ doc.document_id }}" value="{{ record.value if record else '' }}"></td>
+          <td><input name="{{ field_name }}__{{ doc.document_id }}" value="{{ record.value if record else '' }}"
+                     class="{{ 'field-missing' if field_name in missing_fields else '' }}"
+                     aria-invalid="{{ 'true' if field_name in missing_fields else 'false' }}"></td>
         </tr>
       {% endfor %}
       </tbody>

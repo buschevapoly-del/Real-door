@@ -22,6 +22,7 @@ import shutil
 import tempfile
 import uuid
 from collections import Counter
+from datetime import datetime, timezone
 from pathlib import Path
 
 from fastapi import FastAPI, Form, Request, Response, UploadFile
@@ -326,6 +327,7 @@ def profile_confirm(request: Request, household_id: str):
 async def profile_confirm_post(request: Request, household_id: str):
     form = await request.form()
     household = storage.get_household(household_id)
+    incomplete_documents = {}
     for doc_id in list(household["documents"].keys()):
         doc = household["documents"][doc_id]
         if doc["confirmed"]:
@@ -336,7 +338,8 @@ async def profile_confirm_post(request: Request, household_id: str):
             doc_type_for_fields = doc_type
         else:
             doc_type_for_fields = doc["document_type"]
-        for field_name, kind in FIELD_MAP.get(doc_type_for_fields, {}).values():
+        required_fields = list(FIELD_MAP.get(doc_type_for_fields, {}).values())
+        for field_name, kind in required_fields:
             submitted = form.get(f"{field_name}__{doc_id}")
             if submitted is None or submitted == "":
                 continue
@@ -344,7 +347,26 @@ async def profile_confirm_post(request: Request, household_id: str):
             parsed = _parse_value(submitted, kind)
             if existing.get("value") != parsed:
                 storage.update_field(household_id, doc_id, field_name, parsed, bbox=existing.get("bbox"))
+        # Re-fetch after any field updates above to check what's actually on
+        # file now -- a document (especially one needing manual entry) must
+        # never be marked confirmed while a required field is still empty.
+        doc = storage.get_household(household_id)["documents"][doc_id]
+        missing = [
+            field_name for field_name, kind in required_fields
+            if doc["fields"].get(field_name, {}).get("value") in (None, "")
+        ]
+        if missing:
+            incomplete_documents[doc_id] = missing
+            continue
         storage.confirm_document(household_id, doc_id)
+    if incomplete_documents:
+        return _render_profile_screen(
+            request,
+            household_id,
+            "profile_confirm.html",
+            confirm_error="Please fill in every field before confirming -- one or more documents below still need a value.",
+            incomplete_documents=incomplete_documents,
+        )
     return RedirectResponse(url=f"/household/{household_id}/summary?flash=confirmed", status_code=303)
 
 
@@ -436,16 +458,106 @@ def submission_json(household_id: str):
     return JSONResponse({"submission": payload, "schema_errors": errors})
 
 
+def _packet_text(household_id: str) -> str:
+    """The renter-facing download: plain language, formatted amounts, no
+    bbox/rule_id/rule_corpus_version or other audit-only technical detail.
+    That detail stays reachable separately via the technical export."""
+    household = storage.get_household(household_id)
+    submission = _submission_for(household)
+    doc_types_present = [d["document_type"] for d in household["documents"].values() if d["document_type"]]
+    checklist = checklist_status(household_id, doc_types_present) if household["household_size"] else None
+    expired_types = _expired_document_types(submission)
+
+    lines = [
+        "REALDOOR -- YOUR APPLICATION PACKET",
+        f"Household: {household_id}",
+        f"Prepared: {format_timestamp(datetime.now(timezone.utc).isoformat())}",
+        "",
+        DISCLAIMER_NO_DECISION,
+        "",
+    ]
+
+    if submission:
+        lines.append("INCOME SUMMARY")
+        lines.append(f"  Annualized income: {format_money(submission.annualized_income)} a year")
+        if submission.threshold:
+            lines.append(
+                f"  Income limit for a household of {submission.threshold['household_size']}: "
+                f"{format_money(submission.threshold['income_limit_60_percent'])} a year"
+            )
+        lines.append(f"  {COMPARISON_LABELS.get(submission.comparison, submission.comparison)}.")
+        lines.append(f"  Status: {READINESS_LABELS.get(submission.readiness_status, submission.readiness_status)}")
+        for reason in submission.review_reasons:
+            lines.append(f"    - {reason_code_label(reason)}")
+        lines.append("")
+
+    if checklist:
+        lines.append("REQUIRED DOCUMENTS")
+        for dt in checklist["required"]:
+            label = DOCUMENT_TYPE_LABELS.get(dt, dt)
+            if dt in checklist["missing"]:
+                status = "Missing -- we don't have this yet"
+            elif dt in expired_types:
+                status = "Expired -- older than 60 days, needs a newer copy"
+            else:
+                status = "Present"
+            lines.append(f"  {label}: {status}")
+        for dt in checklist["extra"]:
+            lines.append(f"  {DOCUMENT_TYPE_LABELS.get(dt, dt)}: Extra (not on required list)")
+        lines.append("")
+
+    confirmed_documents = _confirmed(household)
+    if confirmed_documents:
+        lines.append("DOCUMENTS INCLUDED")
+        for doc in confirmed_documents:
+            lines.append(f"  {doc_preview_label(doc)}")
+            for label, (field_name, kind) in FIELD_MAP.get(doc["document_type"], {}).items():
+                record = doc["fields"].get(field_name)
+                if not record or record.get("value") in (None, ""):
+                    continue
+                value = record["value"]
+                if field_name == "hourly_rate":
+                    display_value = format_hourly_rate(value)
+                elif kind == "money":
+                    display_value = format_money(value)
+                else:
+                    display_value = value
+                lines.append(f"    {FIELD_LABELS.get(field_name, field_name)}: {display_value}")
+            lines.append("")
+
+    lines.append(
+        "This package is only ever viewed, downloaded, or deleted by you. "
+        "It is never submitted automatically."
+    )
+    return "\n".join(lines)
+
+
 @app.get("/household/{household_id}/export")
 def export_package(household_id: str):
     storage.log_activity(household_id, "package_exported")
+    text = _packet_text(household_id)
+    out_path = EXPORTS_DIR / f"{household_id}_packet.txt"
+    out_path.write_text(text, encoding="utf-8")
+    return FileResponse(
+        out_path, filename=f"{household_id}_application_packet.txt", media_type="text/plain"
+    )
+
+
+@app.get("/household/{household_id}/export/technical")
+def export_package_technical(household_id: str):
+    """The full internal record (bbox, confidence, activity log, raw
+    submission) -- for judges/verification against submission.schema.json,
+    never the button a renter is pointed at."""
+    storage.log_activity(household_id, "technical_export_downloaded")
     household = storage.get_household(household_id)
     submission = _submission_json(household_id)
     package = {"profile": household, "submission": submission}
     out_path = EXPORTS_DIR / f"{household_id}.json"
     with out_path.open("w", encoding="utf-8") as f:
         json.dump(package, f, indent=2)
-    return FileResponse(out_path, filename=f"{household_id}_package.json", media_type="application/json")
+    return FileResponse(
+        out_path, filename=f"{household_id}_technical_export.json", media_type="application/json"
+    )
 
 
 @app.get("/how-it-works", response_class=HTMLResponse)

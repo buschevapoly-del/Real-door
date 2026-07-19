@@ -128,6 +128,7 @@ ACTIVITY_ACTION_LABELS = {
     "document_confirmed": "You confirmed a document",
     "document_deleted": "You removed a document",
     "package_exported": "You downloaded your packet",
+    "technical_export_downloaded": "You downloaded the technical export",
 }
 
 

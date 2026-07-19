@@ -72,6 +72,8 @@ button.danger-btn { background: var(--danger-fg); }
   margin: 1rem 0;
 }
 .doc-card.confirmed { border-color: var(--ok-fg); }
+.doc-card.incomplete { border-color: var(--warn-fg); }
+.field-missing { border: 2px solid var(--warn-fg); background: var(--warn-bg); }
 .doc-head { display: flex; align-items: center; gap: 0.6rem; margin-bottom: 0.5rem; }
 .doc-id { color: var(--muted); font-size: 0.85rem; }
 .badge { font-size: 0.75rem; padding: 0.1rem 0.5rem; border-radius: 1rem; }
@@ -213,6 +215,8 @@ table.fields th, table.fields td { text-align: left; padding: 0.35rem 0.5rem; bo
   color: var(--ok-fg);
   font-size: 0.9rem;
 }
+.technical-export-link { font-size: 0.75rem; color: var(--muted); margin-top: 0.5rem; }
+.technical-export-link a { color: var(--muted); }
 
 /* Dev/test tools footer -- kept visually separate from the renter's flow */
 .dev-tools {
