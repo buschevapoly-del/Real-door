@@ -52,11 +52,13 @@
       {% for label, (field_name, kind) in field_map.get(doc.document_type, {}).items() %}
         {% set record = doc.fields.get(field_name) %}
         {% if record and record.value not in (None, "") %}
+        {% set size_note = household_size_note(household, field_name, record.value) %}
         <tr><td>{{ field_labels.get(field_name, field_name) }}</td>
             <td>
               {% if field_name == 'hourly_rate' %}{{ format_hourly_rate(record.value) }}
               {%- elif kind == 'money' %}{{ format_money(record.value) }}
               {%- else %}{{ record.value }}{% endif %}
+              {% if size_note %}<br><span class="status-reason">{{ size_note }}</span>{% endif %}
             </td></tr>
         {% endif %}
       {% endfor %}

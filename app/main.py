@@ -34,7 +34,7 @@ from app import storage
 from app.checklist import checklist_status
 from app.config import DATA_DIR, EVENT_DATE, DOCUMENT_CURRENCY_WINDOW_DAYS, RULE_CORPUS_VERSION
 from app.extraction import extract_document, draw_highlight, FIELD_MAP, _parse_value
-from app.income import build_submission
+from app.income import build_submission, REQUIRED_FIELDS as INCOME_REQUIRED_FIELDS
 from app.labels import (
     FIELD_LABELS,
     DOCUMENT_TYPE_LABELS,
@@ -141,6 +141,79 @@ def _confirmed(household: dict) -> list:
     return [d for d in household["documents"].values() if d["confirmed"]]
 
 
+def _is_document_data_complete(doc: dict) -> bool:
+    """Mirrors the confirm-time completeness gate (profile_confirm_post):
+    a document only counts as data-complete if every one of its type's
+    fields has a value. Guards display (checklist/preview/export) against
+    a document that was marked confirmed under a legacy/broken state --
+    e.g. persisted before that gate existed -- from surfacing as if its
+    data were real."""
+    required_fields = FIELD_MAP.get(doc.get("document_type"), {}).values()
+    return all(
+        doc["fields"].get(field_name, {}).get("value") not in (None, "")
+        for field_name, kind in required_fields
+    )
+
+
+def _completed_documents(household: dict) -> list:
+    return [d for d in _confirmed(household) if _is_document_data_complete(d)]
+
+
+def _incomplete_document_for_type(household: dict, document_type: str):
+    """Find the confirmed document of this type that's missing one of the
+    fields income.py actually requires for its calculation -- so a review
+    reason can name which document needs attention instead of "one of
+    your pay stubs" when there's more than one."""
+    required = INCOME_REQUIRED_FIELDS.get(document_type, set())
+    for doc in household["documents"].values():
+        if doc["document_type"] != document_type or not doc["confirmed"]:
+            continue
+        if not required.issubset(doc["fields"].keys()):
+            return doc
+    return None
+
+
+def reason_display_text(code: str, household: dict) -> str:
+    """Reason codes themselves are a frozen, schema-facing contract --
+    this only changes how one is *displayed* when the specific document
+    responsible can be named (PRD follow-up: name which pay stub, not
+    "one of your pay stubs")."""
+    match = re.match(r"INCOMPLETE_(.+)_FIELDS$", code)
+    if match:
+        document_type = match.group(1).lower()
+        doc = _incomplete_document_for_type(household, document_type)
+        type_label = DOCUMENT_TYPE_LABELS.get(document_type, document_type.replace("_", " ")).lower()
+        if doc is not None:
+            full_label = doc_preview_label(doc)
+            descriptor = full_label[len(type_label) :].lstrip(" —-") if full_label.lower().startswith(type_label) else ""
+            if descriptor:
+                return f"The {type_label} dated {descriptor} is missing some information — please review it."
+            # No date/period could be read from this document at all (e.g.
+            # a scanned pay stub with nothing extracted) -- there's nothing
+            # to name it by, so point at what to do instead of guessing.
+            return f"One of your {type_label}s still needs its details filled in — please go back and complete it."
+        return f"Your {type_label} is missing some information — please review it."
+    return reason_code_label(code)
+
+
+def household_size_note(household: dict, field_name: str, value) -> str:
+    """The application_summary's extracted household size is shown for the
+    renter's own review only -- the calculation always uses the size
+    entered on the Upload screen (see FIELD_PURPOSES). When the two
+    differ, say so right where the extracted number is shown, so two
+    different numbers never read as an unexplained contradiction."""
+    if field_name != "household_size":
+        return ""
+    entered = household.get("household_size")
+    if not entered or str(value) == str(entered):
+        return ""
+    return f"RealDoor used the number you entered -- {entered} -- for the calculation above, not this document's number."
+
+
+templates.env.globals["reason_display_text"] = reason_display_text
+templates.env.globals["household_size_note"] = household_size_note
+
+
 def _label_income_lines(income_lines: list) -> list:
     """Replace raw document IDs with a plain type label for the primary
     view (PRD Module 2, section 3.1) -- numbered only when a household has
@@ -221,7 +294,8 @@ def _render_summary(request: Request, household_id: str, **extra):
 
 def _render_packet(request: Request, household_id: str, **extra):
     household = storage.get_household(household_id)
-    doc_types_present = [d["document_type"] for d in household["documents"].values() if d["document_type"]]
+    completed_documents = _completed_documents(household)
+    doc_types_present = [d["document_type"] for d in completed_documents]
     checklist = checklist_status(household_id, doc_types_present) if household["household_size"] else None
     submission = _submission_for(household)
     context = _common_context(
@@ -230,7 +304,7 @@ def _render_packet(request: Request, household_id: str, **extra):
         stage=3,
         checklist=checklist,
         expired_document_types=_expired_document_types(submission),
-        confirmed_documents=_confirmed(household),
+        confirmed_documents=completed_documents,
         field_map=FIELD_MAP,
         **extra,
     )
@@ -464,7 +538,8 @@ def _packet_text(household_id: str) -> str:
     That detail stays reachable separately via the technical export."""
     household = storage.get_household(household_id)
     submission = _submission_for(household)
-    doc_types_present = [d["document_type"] for d in household["documents"].values() if d["document_type"]]
+    completed_documents = _completed_documents(household)
+    doc_types_present = [d["document_type"] for d in completed_documents]
     checklist = checklist_status(household_id, doc_types_present) if household["household_size"] else None
     expired_types = _expired_document_types(submission)
 
@@ -488,7 +563,7 @@ def _packet_text(household_id: str) -> str:
         lines.append(f"  {COMPARISON_LABELS.get(submission.comparison, submission.comparison)}.")
         lines.append(f"  Status: {READINESS_LABELS.get(submission.readiness_status, submission.readiness_status)}")
         for reason in submission.review_reasons:
-            lines.append(f"    - {reason_code_label(reason)}")
+            lines.append(f"    - {reason_display_text(reason, household)}")
         lines.append("")
 
     if checklist:
@@ -506,10 +581,9 @@ def _packet_text(household_id: str) -> str:
             lines.append(f"  {DOCUMENT_TYPE_LABELS.get(dt, dt)}: Extra (not on required list)")
         lines.append("")
 
-    confirmed_documents = _confirmed(household)
-    if confirmed_documents:
+    if completed_documents:
         lines.append("DOCUMENTS INCLUDED")
-        for doc in confirmed_documents:
+        for doc in completed_documents:
             lines.append(f"  {doc_preview_label(doc)}")
             for label, (field_name, kind) in FIELD_MAP.get(doc["document_type"], {}).items():
                 record = doc["fields"].get(field_name)
@@ -523,6 +597,9 @@ def _packet_text(household_id: str) -> str:
                 else:
                     display_value = value
                 lines.append(f"    {FIELD_LABELS.get(field_name, field_name)}: {display_value}")
+                note = household_size_note(household, field_name, value)
+                if note:
+                    lines.append(f"      ({note})")
             lines.append("")
 
     lines.append(

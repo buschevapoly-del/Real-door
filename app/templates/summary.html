@@ -20,7 +20,7 @@
     {{ readiness_labels.get(submission.readiness_status, submission.readiness_status) }}
   </span></p>
   {% if submission.review_reasons %}
-    <ul>{% for r in submission.review_reasons %}<li>{{ reason_code_label(r) }}</li>{% endfor %}</ul>
+    <ul>{% for r in submission.review_reasons %}<li>{{ reason_display_text(r, household) }}</li>{% endfor %}</ul>
   {% endif %}
 
   <table class="fields">
