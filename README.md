@@ -29,3 +29,22 @@ Local package data lives in `app_data/` (gitignored) and is only ever
 viewed, downloaded, or deleted by the user — nothing is ever submitted
 automatically.
 
+## Deploying
+
+No database, no build step, no secrets to configure — pick whichever
+host is easiest:
+
+- **Docker** (any host that runs a container): `docker build -t realdoor .`
+  then `docker run -p 8000:8000 -v realdoor-data:/app/app_data realdoor`.
+  The volume mount matters: `app_data/` is where per-household JSON,
+  generated document-page images, and exported PDFs live, and it's wiped
+  on every container restart without it.
+- **Render**: this repo includes a `render.yaml` blueprint (New → Blueprint,
+  point it at this repo/branch). It provisions a persistent disk mounted at
+  `app_data/` so state survives redeploys.
+- **Railway / Heroku-style buildpacks**: the included `Procfile` covers the
+  start command; set the build command to
+  `pip install -r app/requirements.txt`. Attach a persistent volume at
+  `app_data/` if the platform supports one — otherwise state resets on
+  every deploy/restart.
+

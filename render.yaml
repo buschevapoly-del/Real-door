@@ -1,0 +1,16 @@
+services:
+  - type: web
+    name: realdoor
+    runtime: python
+    plan: free
+    buildCommand: pip install -r app/requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    disk:
+      # app_data/ holds per-household JSON plus generated images/PDFs --
+      # without a persistent disk mounted here, that state is wiped on
+      # every deploy/restart (Render's default web-service disk is
+      # ephemeral). Free-tier disks are not available on all plans; bump
+      # `plan` above if Render rejects this block.
+      name: realdoor-data
+      mountPath: /opt/render/project/src/app_data
+      sizeGB: 1
