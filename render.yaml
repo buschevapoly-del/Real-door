@@ -5,12 +5,9 @@ services:
     plan: free
     buildCommand: pip install -r app/requirements.txt
     startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
-    disk:
-      # app_data/ holds per-household JSON plus generated images/PDFs --
-      # without a persistent disk mounted here, that state is wiped on
-      # every deploy/restart (Render's default web-service disk is
-      # ephemeral). Free-tier disks are not available on all plans; bump
-      # `plan` above if Render rejects this block.
-      name: realdoor-data
-      mountPath: /opt/render/project/src/app_data
-      sizeGB: 1
+    # No persistent disk on the free tier -- Render doesn't support disks
+    # below the Starter plan. That means app_data/ (per-household JSON,
+    # generated images, exported PDFs) resets on every deploy/restart,
+    # which is fine for demoing but not for real applicant data. Add a
+    # `disk:` block back (name/mountPath: /opt/render/project/src/app_data
+    # /sizeGB) once upgraded to a paid plan, if persistence is needed.
