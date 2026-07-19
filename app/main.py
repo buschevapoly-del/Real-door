@@ -1,13 +1,17 @@
 """RealDoor: a LIHTC applicant-assistant web app.
 
-Three modules, one FastAPI app, no build step:
-  1. Profile     -- a 3-screen flow (Upload -> Review -> Confirm): upload
-                     documents, see what was extracted in plain language,
-                     correct and confirm before anything is used elsewhere.
-  2. Understanding -- annualized income vs. the frozen 60% AMI threshold,
-                     readiness status with reasons, and a rule Q&A box.
-  3. Preparation  -- checklist of required vs. present documents, and an
-                     explicit view/download/delete-only package export.
+One screen at a time, four screens total, no build step:
+  0. Welcome  -- what this is, what happens next, and a case-number entry.
+  1. Upload your documents -- itself a 3-step Upload -> Review -> Confirm
+                     flow: upload documents, see what was extracted in
+                     plain language, correct and confirm before anything
+                     is used elsewhere.
+  2. Your income summary -- annualized income vs. the frozen 60% AMI
+                     threshold, plain-language readiness status with
+                     reasons, and a rule Q&A box.
+  3. Your application packet -- checklist of required vs. present
+                     documents, and an explicit view/download/delete-only
+                     package export.
 
 This app never decides eligibility and never sends a package anywhere on
 its own (governance/DATA_USE_AND_SAFETY.md).
@@ -177,33 +181,14 @@ def _common_context(request: Request, household_id: str, **extra) -> dict:
     }
 
 
-def _render_household(request: Request, household_id: str, **extra):
-    household = storage.get_household(household_id)
-    doc_types_present = [d["document_type"] for d in household["documents"].values() if d["document_type"]]
-    checklist = checklist_status(household_id, doc_types_present) if household["household_size"] else None
-    submission = _submission_for(household)
-    context = _common_context(
-        request,
-        household_id,
-        checklist=checklist,
-        expired_document_types=_expired_document_types(submission),
-        submission=submission,
-        income_lines_display=_label_income_lines(submission.income_lines) if submission else [],
-        confirmed_documents=_confirmed(household),
-        unconfirmed_count=len(_unconfirmed(household)),
-        **extra,
-    )
-    return templates.TemplateResponse(request, "household.html", context)
-
-
-def _render_profile_screen(request: Request, household_id: str, template_name: str, step: int, **extra):
+def _render_profile_screen(request: Request, household_id: str, template_name: str, **extra):
     household = storage.get_household(household_id)
     context = _common_context(
         request,
         household_id,
-        step=step,
-        total_steps=3,
+        stage=1,
         unconfirmed_documents=_unconfirmed(household),
+        confirmed_documents=_confirmed(household),
         confirmed_count=len(_confirmed(household)),
         document_types=DOCUMENT_TYPES,
         field_map=FIELD_MAP,
@@ -213,14 +198,57 @@ def _render_profile_screen(request: Request, household_id: str, template_name: s
     return templates.TemplateResponse(request, template_name, context)
 
 
+def _render_summary(request: Request, household_id: str, **extra):
+    household = storage.get_household(household_id)
+    submission = _submission_for(household)
+    context = _common_context(
+        request,
+        household_id,
+        stage=2,
+        submission=submission,
+        income_lines_display=_label_income_lines(submission.income_lines) if submission else [],
+        **extra,
+    )
+    return templates.TemplateResponse(request, "summary.html", context)
+
+
+def _render_packet(request: Request, household_id: str, **extra):
+    household = storage.get_household(household_id)
+    doc_types_present = [d["document_type"] for d in household["documents"].values() if d["document_type"]]
+    checklist = checklist_status(household_id, doc_types_present) if household["household_size"] else None
+    submission = _submission_for(household)
+    context = _common_context(
+        request,
+        household_id,
+        stage=3,
+        checklist=checklist,
+        expired_document_types=_expired_document_types(submission),
+        **extra,
+    )
+    return templates.TemplateResponse(request, "packet.html", context)
+
+
 @app.get("/", response_class=HTMLResponse)
 def index():
-    return RedirectResponse(url="/household/HH-NEW-1")
+    return RedirectResponse(url="/welcome")
+
+
+@app.get("/welcome", response_class=HTMLResponse)
+def welcome(request: Request):
+    return templates.TemplateResponse(
+        request, "welcome.html", {"request": request, "all_households": storage.list_households()}
+    )
 
 
 @app.get("/household/{household_id}", response_class=HTMLResponse)
-def household_page(request: Request, household_id: str):
-    return _render_household(request, household_id)
+def household_page(household_id: str):
+    """Not a screen of its own -- dispatches a case to wherever it should
+    pick up: a returning case with confirmed documents goes straight to its
+    income summary, everyone else starts at Upload."""
+    household = storage.get_household(household_id)
+    if household["household_size"] and _confirmed(household):
+        return RedirectResponse(url=f"/household/{household_id}/summary")
+    return RedirectResponse(url=f"/household/{household_id}/profile")
 
 
 @app.post("/household/{household_id}/size")
@@ -230,15 +258,15 @@ def set_size(household_id: str, household_size: int = Form(...)):
 
 
 # ---------------------------------------------------------------------------
-# Module 1 -- Profile: Screen 1.1 Upload -> 1.2 Review -> 1.3 Confirm.
-# Nothing here is used by Module 2 until Screen 1.3's confirmation happens
+# Screen 1 -- Upload your documents: itself Upload -> Review -> Confirm.
+# Nothing here is used by Screen 2 until Confirm's confirmation happens
 # (enforced by _submission_for/_confirmed, not just hidden by the UI).
 # ---------------------------------------------------------------------------
 
 
 @app.get("/household/{household_id}/profile", response_class=HTMLResponse)
 def profile_upload(request: Request, household_id: str):
-    return _render_profile_screen(request, household_id, "profile_upload.html", step=1)
+    return _render_profile_screen(request, household_id, "profile_upload.html")
 
 
 @app.post("/household/{household_id}/profile/upload")
@@ -278,12 +306,12 @@ async def profile_upload_post(
 
 @app.get("/household/{household_id}/profile/review", response_class=HTMLResponse)
 def profile_review(request: Request, household_id: str):
-    return _render_profile_screen(request, household_id, "profile_review.html", step=2)
+    return _render_profile_screen(request, household_id, "profile_review.html")
 
 
 @app.get("/household/{household_id}/profile/confirm", response_class=HTMLResponse)
 def profile_confirm(request: Request, household_id: str):
-    return _render_profile_screen(request, household_id, "profile_confirm.html", step=3)
+    return _render_profile_screen(request, household_id, "profile_confirm.html")
 
 
 @app.post("/household/{household_id}/profile/confirm")
@@ -309,7 +337,23 @@ async def profile_confirm_post(request: Request, household_id: str):
             if existing.get("value") != parsed:
                 storage.update_field(household_id, doc_id, field_name, parsed, bbox=existing.get("bbox"))
         storage.confirm_document(household_id, doc_id)
-    return RedirectResponse(url=f"/household/{household_id}?flash=confirmed", status_code=303)
+    return RedirectResponse(url=f"/household/{household_id}/summary?flash=confirmed", status_code=303)
+
+
+@app.get("/household/{household_id}/summary", response_class=HTMLResponse)
+def summary_screen(request: Request, household_id: str):
+    household = storage.get_household(household_id)
+    if not _confirmed(household):
+        return RedirectResponse(url=f"/household/{household_id}/profile")
+    return _render_summary(request, household_id)
+
+
+@app.get("/household/{household_id}/packet", response_class=HTMLResponse)
+def packet_screen(request: Request, household_id: str):
+    household = storage.get_household(household_id)
+    if not _confirmed(household):
+        return RedirectResponse(url=f"/household/{household_id}/profile")
+    return _render_packet(request, household_id)
 
 
 @app.get("/household/{household_id}/documents/{document_id}/image")
@@ -337,7 +381,7 @@ def field_source_image(household_id: str, document_id: str, field_name: str):
 @app.post("/household/{household_id}/documents/{document_id}/delete")
 def delete_document(household_id: str, document_id: str, redirect_to: str = Form("")):
     storage.delete_document(household_id, document_id)
-    target = redirect_to or f"/household/{household_id}"
+    target = redirect_to or f"/household/{household_id}/profile"
     separator = "&" if "?" in target else "?"
     return RedirectResponse(url=f"{target}{separator}flash=doc_deleted", status_code=303)
 
@@ -345,7 +389,7 @@ def delete_document(household_id: str, document_id: str, redirect_to: str = Form
 @app.post("/household/{household_id}/qa", response_class=HTMLResponse)
 def ask_question(request: Request, household_id: str, question: str = Form(...)):
     qa_answer = answer_question(question)
-    return _render_household(request, household_id, qa_question=question, qa_answer=qa_answer)
+    return _render_summary(request, household_id, qa_question=question, qa_answer=qa_answer)
 
 
 def _submission_json(household_id: str) -> dict:
@@ -416,4 +460,4 @@ def delete_package(household_id: str):
     storage.delete_household(household_id)
     export_path = EXPORTS_DIR / f"{household_id}.json"
     export_path.unlink(missing_ok=True)
-    return RedirectResponse(url="/household/HH-NEW-1", status_code=303)
+    return RedirectResponse(url="/welcome", status_code=303)

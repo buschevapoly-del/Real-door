@@ -2,7 +2,7 @@
 {% block title %}RealDoor — Upload documents{% endblock %}
 {% block header_extra %}{% include "_household_switcher.html" %}{% endblock %}
 {% block content %}
-{% include "_step_indicator.html" %}
+{% include "_stage_indicator.html" %}
 
 <h2>Upload your documents</h2>
 
@@ -61,7 +61,23 @@
 <p class="empty">Upload at least one document to continue.</p>
 {% endif %}
 
-{% if confirmed_count %}
-<p class="empty">You already have {{ confirmed_count }} confirmed document(s). <a href="/household/{{ household.household_id }}">Go to your overview</a>.</p>
+{% if confirmed_documents %}
+<h3>Your confirmed documents</h3>
+<ul class="file-list">
+  {% for doc in confirmed_documents %}
+  <li class="file-row">
+    <img src="/household/{{ household.household_id }}/documents/{{ doc.document_id }}/image" alt="" class="thumb">
+    <span>{{ doc.file_name }}</span>
+    <span class="badge">{{ document_type_labels.get(doc.document_type, doc.document_type) }}</span>
+    <form method="post" action="/household/{{ household.household_id }}/documents/{{ doc.document_id }}/delete" class="inline-form">
+      <input type="hidden" name="redirect_to" value="/household/{{ household.household_id }}/profile">
+      <button type="submit" class="danger-btn">Remove</button>
+    </form>
+  </li>
+  {% endfor %}
+</ul>
+<div class="screen-nav">
+  <a href="/household/{{ household.household_id }}/summary" class="button-link">Continue to your income summary</a>
+</div>
 {% endif %}
 {% endblock %}

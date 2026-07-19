@@ -1,9 +1,0 @@
-<nav class="steps" aria-label="Progress">
-  <p class="step-label">Step {{ step }} of {{ total_steps }}</p>
-  <ol class="step-bar">
-    {% for i in range(1, total_steps + 1) %}
-    <li class="step-seg {{ 'done' if i < step else ('current' if i == step else '') }}"
-        aria-current="{{ 'step' if i == step else 'false' }}"></li>
-    {% endfor %}
-  </ol>
-</nav>

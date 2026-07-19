@@ -1,0 +1,10 @@
+{% set stage_labels = ["Upload your documents", "Your income summary", "Your application packet"] %}
+<nav class="steps" aria-label="Progress">
+  <p class="step-label">Step {{ stage }} of 3: {{ stage_labels[stage - 1] }}</p>
+  <ol class="step-bar">
+    {% for i in range(1, 4) %}
+    <li class="step-seg {{ 'done' if i < stage else ('current' if i == stage else '') }}"
+        aria-current="{{ 'step' if i == stage else 'false' }}"></li>
+    {% endfor %}
+  </ol>
+</nav>

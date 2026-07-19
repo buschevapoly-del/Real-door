@@ -4,6 +4,7 @@ calibrated confidence, the consent gate, the in-package activity log
 (WCAG 2.2 AA: visible focus, no color-only status, completion
 announcements, no interactive-in-interactive markup).
 """
+import re
 import sys
 import unittest
 from pathlib import Path
@@ -104,7 +105,22 @@ class ActivityLogTests(unittest.TestCase):
 
 class AccessibilityMarkerTests(unittest.TestCase):
     def test_household_page_has_no_button_nested_in_anchor(self):
-        page = client.get("/household/HH-A11Y-TEST").text
+        # The packet screen is gated on having at least one confirmed
+        # document, so seed one before checking its markup.
+        storage.delete_household("HH-A11Y-TEST")
+        client.post("/household/HH-A11Y-TEST/size", data={"household_size": 1})
+        pdf_path = DOCUMENTS_DIR / "hh-001_d01_application_summary.pdf"
+        with pdf_path.open("rb") as fh:
+            client.post(
+                "/household/HH-A11Y-TEST/profile/upload",
+                files={"files": (pdf_path.name, fh, "application/pdf")},
+                data={"consent": "1"},
+            )
+        confirm_page = client.get("/household/HH-A11Y-TEST/profile/confirm").text
+        doc_id = re.findall(r'name="document_type__([^"]+)"', confirm_page)[0]
+        client.post("/household/HH-A11Y-TEST/profile/confirm", data={f"confirm__{doc_id}": "1"})
+
+        page = client.get("/household/HH-A11Y-TEST/packet").text
         idx = page.find("Download your application packet")
         self.assertGreater(idx, -1)
         self.assertNotIn("<button", page[idx : idx + 80])

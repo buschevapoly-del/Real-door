@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+{% block title %}RealDoor — Your income summary{% endblock %}
+{% block header_extra %}{% include "_household_switcher.html" %}{% endblock %}
+{% block content %}
+{% include "_stage_indicator.html" %}
+
+<h2>Your income summary</h2>
+<div class="banner subtle">{{ sixty_day_disclaimer }} Event date: {{ event_date }}. Window: {{ currency_window_days }} days.</div>
+
+{% if submission %}
+<div class="summary-card">
+  <p class="big-figure"><strong>${{ '{:,.2f}'.format(submission.annualized_income) }}</strong> a year</p>
+  {% if submission.threshold %}
+  <p>Income limit for a household of {{ submission.threshold.household_size }}:
+     ${{ '{:,.0f}'.format(submission.threshold.income_limit_60_percent) }} a year</p>
+  {% endif %}
+  <p>{{ comparison_labels.get(submission.comparison, submission.comparison) }}.</p>
+
+  <p><span class="status {{ submission.readiness_status|lower }}">
+    {{ readiness_labels.get(submission.readiness_status, submission.readiness_status) }}
+  </span></p>
+  {% if submission.review_reasons %}
+    <ul>{% for r in submission.review_reasons %}<li>{{ reason_code_label(r) }}</li>{% endfor %}</ul>
+  {% endif %}
+
+  <table class="fields">
+    <thead><tr><th>Document</th><th>How we calculated it</th><th>Yearly amount</th></tr></thead>
+    <tbody>
+    {% for line in income_lines_display %}
+      <tr><td>{{ line.display_label }}</td>
+          <td>{{ line.formula }}</td>
+          <td>${{ '{:,.2f}'.format(line.annual_amount) }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+
+  <details class="show-details">
+    <summary>Show calculation details</summary>
+    <h3>Citations</h3>
+    <p class="provenance">Rule corpus version: <code>{{ submission.rule_corpus_version }}</code></p>
+    <ul class="citations">
+    {% for c in submission.citations %}
+      {% if c.type == 'rule' %}
+        <li><code>{{ c.rule_id }}</code> — {{ c.text }} (<a href="{{ c.source_url }}" target="_blank" rel="noopener">source</a>, effective {{ c.effective_date }})</li>
+      {% else %}
+        <li><code>{{ c.document_id }}</code> field <code>{{ c.field }}</code> — page {{ c.page }}, bbox {{ c.bbox }}</li>
+      {% endif %}
+    {% endfor %}
+    </ul>
+    <a href="/household/{{ household.household_id }}/submission.json" target="_blank">View raw submission JSON</a>
+  </details>
+</div>
+{% else %}
+<p class="empty">Set a household size and confirm at least one document to see the calculation.</p>
+{% endif %}
+
+<h3>Ask about the rules</h3>
+<form method="post" action="/household/{{ household.household_id }}/qa" class="inline-form">
+  <input type="text" name="question" placeholder="e.g. What is the frozen 60% threshold for household size 3?" value="{{ qa_question or '' }}" required style="width: 28rem;">
+  <button type="submit">Ask</button>
+</form>
+{% if qa_answer %}
+<div class="qa-answer {{ 'refused' if qa_answer.refused else '' }}" aria-live="polite">
+  <p>{{ qa_answer.answer }}</p>
+  {% if qa_answer.citations %}
+  <ul class="citations">
+    {% for c in qa_answer.citations %}
+      <li><code>{{ c.rule_id }}</code> — {{ c.text }} (<a href="{{ c.source_url }}" target="_blank" rel="noopener">source</a>, effective {{ c.effective_date }})</li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+</div>
+{% endif %}
+
+<div class="screen-nav">
+  <a href="/household/{{ household.household_id }}/profile" class="button-link secondary">Back</a>
+  <a href="/household/{{ household.household_id }}/packet" class="button-link">Continue to your application packet</a>
+</div>
+{% endblock %}

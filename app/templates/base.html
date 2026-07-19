@@ -13,8 +13,9 @@
   <p><a href="/how-it-works">How this works &amp; what data we use</a></p>
 </header>
 
+{% block banners %}
 <div class="banner">{{ no_decision_disclaimer }}</div>
-<div class="banner subtle">{{ sixty_day_disclaimer }} Event date: {{ event_date }}. Window: {{ currency_window_days }} days.</div>
+{% endblock %}
 
 <main>
 {% if flash_message %}

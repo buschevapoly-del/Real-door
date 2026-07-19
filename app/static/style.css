@@ -176,3 +176,23 @@ table.fields th, table.fields td { text-align: left; padding: 0.35rem 0.5rem; bo
   background: var(--bg);
 }
 .doc-head .thumb { width: 32px; height: 42px; }
+
+/* Welcome screen */
+.welcome-hero { max-width: 34rem; margin: 1rem 0; }
+.welcome-hero h2 { font-size: 1.8rem; margin-bottom: 0.25rem; }
+.lede { font-size: 1.1rem; color: var(--muted); }
+.welcome-steps { padding-left: 1.25rem; }
+.welcome-steps li { margin-bottom: 0.5rem; }
+.disclaimer-callout {
+  border-left: 3px solid var(--accent);
+  padding-left: 0.9rem;
+  color: var(--muted);
+  font-size: 0.95rem;
+  margin: 1.5rem 0;
+}
+.case-entry { display: flex; gap: 0.75rem; align-items: end; flex-wrap: wrap; margin-top: 1.5rem; }
+.case-entry label { display: flex; flex-direction: column; gap: 0.3rem; font-size: 0.9rem; }
+.case-entry input { min-width: 12rem; }
+
+/* Screen 2/3 navigation row */
+.screen-nav { display: flex; gap: 0.75rem; align-items: center; margin-top: 1.5rem; }

@@ -83,12 +83,15 @@ class PlainLanguageTests(unittest.TestCase):
         self.assertIn("show-details", page)
 
     def test_step_indicator_shows_step_not_module_name(self):
+        # All three upload sub-screens belong to the outer "Step 1" stage
+        # (Upload your documents); the sub-step itself is distinguished by
+        # the screen's own heading, not a second numeric indicator.
         page = client.get(f"/household/{HH}/profile").text
         self.assertIn("Step 1 of 3", page)
         review = client.get(f"/household/{HH}/profile/review").text
-        self.assertIn("Step 2 of 3", review)
+        self.assertIn("Step 1 of 3", review)
         confirm = client.get(f"/household/{HH}/profile/confirm").text
-        self.assertIn("Step 3 of 3", confirm)
+        self.assertIn("Step 1 of 3", confirm)
 
 
 class ViewSourceImageTests(unittest.TestCase):

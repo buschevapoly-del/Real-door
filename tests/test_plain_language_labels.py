@@ -52,7 +52,11 @@ def _confirm_household(household_id: str, size: int, filenames: list) -> dict:
                 continue
             form[f"{f['field']}__{doc_id}"] = str(f["value"])
     client.post(f"/household/{household_id}/profile/confirm", data=form)
-    return html.unescape(client.get(f"/household/{household_id}").text)
+    return html.unescape(client.get(f"/household/{household_id}/summary").text)
+
+
+def _packet_page(household_id: str) -> str:
+    return html.unescape(client.get(f"/household/{household_id}/packet").text)
 
 
 class ReasonCodeLabelTests(unittest.TestCase):
@@ -134,7 +138,8 @@ class Module2PlainViewTests(unittest.TestCase):
 
 class Module3PlainViewTests(unittest.TestCase):
     def test_activity_log_is_collapsed_and_humanized(self):
-        page = _confirm_household(HH, 1, ["hh-001_d01_application_summary.pdf"])
+        _confirm_household(HH, 1, ["hh-001_d01_application_summary.pdf"])
+        page = _packet_page(HH)
         self.assertIn("Show activity history", page)
         self.assertIn("You entered your household size", page)
         self.assertIn("You uploaded your application summary", page)
@@ -143,7 +148,8 @@ class Module3PlainViewTests(unittest.TestCase):
         self.assertFalse(re.search(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}", page))
 
     def test_export_button_has_plain_label(self):
-        page = _confirm_household(HH, 1, ["hh-001_d01_application_summary.pdf"])
+        _confirm_household(HH, 1, ["hh-001_d01_application_summary.pdf"])
+        page = _packet_page(HH)
         self.assertIn("Download your application packet", page)
         self.assertNotIn("(JSON)", page)
 
@@ -152,10 +158,11 @@ class Module3PlainViewTests(unittest.TestCase):
         # (application_checklists.json) -- required_document_types is only
         # populated for those exact household IDs, so this test must reuse
         # one rather than a synthetic ID. Its employment letter is >60 days old.
-        page = _confirm_household(
+        _confirm_household(
             "HH-005", 5, ["hh-005_d01_application_summary.pdf", "hh-005_d02_pay_stub.pdf",
                           "hh-005_d03_pay_stub.pdf", "hh-005_d04_employment_letter.pdf"]
         )
+        page = _packet_page("HH-005")
         self.assertIn("Expired", page)
         self.assertIn("needs a newer copy", page)
 
