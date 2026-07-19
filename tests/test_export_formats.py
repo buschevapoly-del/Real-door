@@ -1,9 +1,10 @@
 """The renter-facing "Download your application packet" button must
-return a plain-language document (no bbox, rule_id, rule_corpus_version,
-or other audit-only technical detail) -- that raw internal record is
-still available, but only via a separate "Technical export" link aimed
-at judges/verification, never as the primary download.
+return a plain-language PDF (no bbox, rule_id, rule_corpus_version, or
+other audit-only technical detail) -- that raw internal record is still
+available, but only via a separate "Technical export" link aimed at
+judges/verification, never as the primary download.
 """
+import io
 import json
 import re
 import sys
@@ -13,6 +14,7 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT))
 
+import pdfplumber
 from fastapi.testclient import TestClient
 
 from app.main import app
@@ -48,6 +50,15 @@ def _confirm_household(household_id: str, size: int, filenames: list) -> None:
     assert storage.get_household(household_id)["household_size"] == size
 
 
+def _export_pdf_text(household_id: str) -> str:
+    resp = client.get(f"/household/{household_id}/export")
+    assert resp.status_code == 200
+    assert "application/pdf" in resp.headers["content-type"]
+    with pdfplumber.open(io.BytesIO(resp.content)) as pdf:
+        raw = "\n".join(page.extract_text() or "" for page in pdf.pages)
+    return " ".join(raw.split())  # collapse PDF line-wrapping for substring checks
+
+
 class RenterFacingExportTests(unittest.TestCase):
     def setUp(self):
         _confirm_household(
@@ -56,15 +67,15 @@ class RenterFacingExportTests(unittest.TestCase):
              "hh-001_d03_pay_stub.pdf", "hh-001_d04_employment_letter.pdf"],
         )
 
-    def test_download_button_points_at_plain_text_not_json(self):
+    def test_download_button_points_at_pdf_not_json(self):
         page = client.get(f"/household/{HH}/packet").text
         self.assertIn(f'/household/{HH}/export"', page)
 
-    def test_export_is_plain_text_with_no_technical_detail(self):
+    def test_export_is_pdf_with_no_technical_detail(self):
         resp = client.get(f"/household/{HH}/export")
         self.assertEqual(resp.status_code, 200)
-        self.assertIn("text/plain", resp.headers["content-type"])
-        body = resp.text
+        self.assertIn("application/pdf", resp.headers["content-type"])
+        body = _export_pdf_text(HH)
         self.assertNotIn("bbox", body.lower())
         self.assertNotIn("rule_corpus_version", body)
         self.assertNotIn("confidence", body.lower())
@@ -72,13 +83,13 @@ class RenterFacingExportTests(unittest.TestCase):
         self.assertNotIn("READY_TO_REVIEW", body)
 
     def test_export_shows_plain_language_and_formatted_money(self):
-        body = client.get(f"/household/{HH}/export").text
-        self.assertIn("YOUR APPLICATION PACKET", body)
-        self.assertIn("INCOME SUMMARY", body)
+        body = _export_pdf_text(HH)
+        self.assertIn("your application packet", body.lower())
+        self.assertIn("Income summary", body)
         self.assertRegex(body, r"\$[\d,]+\.\d{2}")
 
     def test_export_never_submitted_automatically_note_present(self):
-        body = client.get(f"/household/{HH}/export").text
+        body = _export_pdf_text(HH)
         self.assertIn("never submitted automatically", body)
 
 

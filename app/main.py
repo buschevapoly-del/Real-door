@@ -49,6 +49,7 @@ from app.labels import (
     format_hourly_rate,
     doc_preview_label,
 )
+from app.pdf_export import build_packet_pdf
 from app.qa import answer_question
 from app.safety import DISCLAIMER_60_DAY_CONVENTION, DISCLAIMER_NO_DECISION
 from app.schema_validate import validate_submission
@@ -607,10 +608,13 @@ def submission_json(household_id: str):
     return JSONResponse({"submission": payload, "schema_errors": errors})
 
 
-def _packet_text(household_id: str) -> str:
-    """The renter-facing download: plain language, formatted amounts, no
-    bbox/rule_id/rule_corpus_version or other audit-only technical detail.
-    That detail stays reachable separately via the technical export."""
+def _packet_data(household_id: str) -> dict:
+    """Single source of data for the renter-facing packet PDF -- plain
+    language, formatted amounts, no bbox/rule_id/rule_corpus_version or
+    other audit-only technical detail. That detail stays reachable
+    separately via the technical export. pdf_export.build_packet_pdf()
+    is a pure formatting layer over this dict, not a second calculation
+    path."""
     household = storage.get_household(household_id)
     submission = _submission_for(household)
     completed_documents = _completed_documents(household)
@@ -618,80 +622,76 @@ def _packet_text(household_id: str) -> str:
     checklist = checklist_status(household_id, doc_types_present) if household["household_size"] else None
     expired_types = _expired_document_types(submission)
 
-    lines = [
-        "REALDOOR -- YOUR APPLICATION PACKET",
-        f"Household: {household_id}",
-        f"Prepared: {format_timestamp(datetime.now(timezone.utc).isoformat())}",
-        "",
-        DISCLAIMER_NO_DECISION,
-        "",
-    ]
-
+    income_summary = None
     if submission:
-        lines.append("INCOME SUMMARY")
-        lines.append(f"  Annualized income: {format_money(submission.annualized_income)} a year")
-        if submission.threshold:
-            lines.append(
-                f"  Income limit for a household of {submission.threshold['household_size']}: "
-                f"{format_money(submission.threshold['income_limit_60_percent'])} a year"
-            )
-        lines.append(f"  {COMPARISON_LABELS.get(submission.comparison, submission.comparison)}.")
-        lines.append(f"  Status: {READINESS_LABELS.get(submission.readiness_status, submission.readiness_status)}")
-        for reason in submission.review_reasons:
-            lines.append(f"    - {reason_display_text(reason, household)}")
-        lines.append("")
+        income_summary = {
+            "annualized_income_display": format_money(submission.annualized_income),
+            "threshold": submission.threshold,
+            "threshold_display": (
+                format_money(submission.threshold["income_limit_60_percent"]) if submission.threshold else None
+            ),
+            "comparison_label": COMPARISON_LABELS.get(submission.comparison, submission.comparison),
+            "readiness_status": submission.readiness_status,
+            "readiness_label": READINESS_LABELS.get(submission.readiness_status, submission.readiness_status),
+            "reasons": [reason_display_text(r, household) for r in submission.review_reasons],
+        }
 
+    checklist_rows = []
     if checklist:
-        lines.append("REQUIRED DOCUMENTS")
         for dt in checklist["required"]:
-            label = DOCUMENT_TYPE_LABELS.get(dt, dt)
             if dt in checklist["missing"]:
-                status = "Missing -- we don't have this yet"
+                status = "missing"
             elif dt in expired_types:
-                status = "Expired -- older than 60 days, needs a newer copy"
+                status = "expired"
             else:
-                status = "Present"
-            lines.append(f"  {label}: {status}")
+                status = "present"
+            checklist_rows.append({"label": DOCUMENT_TYPE_LABELS.get(dt, dt), "status": status})
         for dt in checklist["extra"]:
-            lines.append(f"  {DOCUMENT_TYPE_LABELS.get(dt, dt)}: Extra (not on required list)")
-        lines.append("")
+            checklist_rows.append({"label": DOCUMENT_TYPE_LABELS.get(dt, dt), "status": "extra"})
 
-    if completed_documents:
-        lines.append("DOCUMENTS INCLUDED")
-        for doc in completed_documents:
-            lines.append(f"  {doc_preview_label(doc)}")
-            for label, (field_name, kind) in FIELD_MAP.get(doc["document_type"], {}).items():
-                record = doc["fields"].get(field_name)
-                if not record or record.get("value") in (None, ""):
-                    continue
-                value = record["value"]
-                if field_name == "hourly_rate":
-                    display_value = format_hourly_rate(value)
-                elif kind == "money":
-                    display_value = format_money(value)
-                else:
-                    display_value = value
-                lines.append(f"    {FIELD_LABELS.get(field_name, field_name)}: {display_value}")
-                note = household_size_note(household, field_name, value)
-                if note:
-                    lines.append(f"      ({note})")
-            lines.append("")
+    documents = []
+    for doc in completed_documents:
+        fields = []
+        for label, (field_name, kind) in FIELD_MAP.get(doc["document_type"], {}).items():
+            record = doc["fields"].get(field_name)
+            if not record or record.get("value") in (None, ""):
+                continue
+            value = record["value"]
+            if field_name == "hourly_rate":
+                display_value = format_hourly_rate(value)
+            elif kind == "money":
+                display_value = format_money(value)
+            else:
+                display_value = value
+            fields.append({
+                "label": FIELD_LABELS.get(field_name, field_name),
+                "value": display_value,
+                "note": household_size_note(household, field_name, value),
+            })
+        documents.append({"label": doc_preview_label(doc), "fields": fields})
 
-    lines.append(
-        "This package is only ever viewed, downloaded, or deleted by you. "
-        "It is never submitted automatically."
-    )
-    return "\n".join(lines)
+    return {
+        "household_id": household_id,
+        "prepared_at": format_timestamp(datetime.now(timezone.utc).isoformat()),
+        "disclaimer": DISCLAIMER_NO_DECISION,
+        "income_summary": income_summary,
+        "checklist": checklist_rows,
+        "documents": documents,
+    }
 
 
 @app.get("/household/{household_id}/export")
 def export_package(household_id: str):
+    """The renter's primary download: a formatted PDF built from
+    _packet_data() -- the same confirmed/validated data behind the
+    technical export, just laid out for a caseworker to read, not parsed
+    as JSON. See app/pdf_export.py."""
     storage.log_activity(household_id, "package_exported")
-    text = _packet_text(household_id)
-    out_path = EXPORTS_DIR / f"{household_id}_packet.txt"
-    out_path.write_text(text, encoding="utf-8")
+    pdf_bytes = build_packet_pdf(_packet_data(household_id))
+    out_path = EXPORTS_DIR / f"{household_id}_packet.pdf"
+    out_path.write_bytes(pdf_bytes)
     return FileResponse(
-        out_path, filename=f"{household_id}_application_packet.txt", media_type="text/plain"
+        out_path, filename=f"{household_id}_application_packet.pdf", media_type="application/pdf"
     )
 
 

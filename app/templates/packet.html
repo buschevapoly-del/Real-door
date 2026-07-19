@@ -39,7 +39,7 @@
 {% if confirmed_documents %}
 <details class="show-details">
   <summary>Preview your packet</summary>
-  <p class="empty">Exactly what's included if you download now -- the values you confirmed, not the original files.</p>
+  <p class="empty">Exactly what's in your PDF -- the values you confirmed, not the original files.</p>
   {% for doc in confirmed_documents %}
   <div class="doc-preview">
     <h4>{{ doc_preview_label(doc) }}</h4>

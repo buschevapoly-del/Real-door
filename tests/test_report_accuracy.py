@@ -13,6 +13,7 @@
    when it can (e.g. by pay period), and give actionable guidance when it
    can't (a document with literally no extracted data to name it by).
 """
+import io
 import json
 import re
 import sys
@@ -22,6 +23,7 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT))
 
+import pdfplumber
 from fastapi.testclient import TestClient
 
 from app.main import app
@@ -29,6 +31,16 @@ from app import storage
 from app.config import DOCUMENTS_DIR, DOCUMENT_GOLD_PATH
 
 client = TestClient(app)
+
+
+def _export_pdf_text(household_id: str) -> str:
+    """The renter-facing download is now a PDF -- extract its text (and
+    collapse PDF line-wrapping) so existing substring assertions still
+    work the same way they did against the old plain-text export."""
+    resp = client.get(f"/household/{household_id}/export")
+    with pdfplumber.open(io.BytesIO(resp.content)) as pdf:
+        raw = "\n".join(page.extract_text() or "" for page in pdf.pages)
+    return " ".join(raw.split())
 
 HH = "HH-REPORT-ACCURACY-TEST"
 
@@ -94,12 +106,12 @@ class HouseholdSizeClarityTests(unittest.TestCase):
         # HH-001's application_summary states household_size 1 -- nothing
         # preset, so it propagates from the document with no divergence.
         _upload_and_confirm(HH, HH_001_FILES)
-        body = client.get(f"/household/{HH}/export").text
+        body = _export_pdf_text(HH)
         self.assertNotIn("RealDoor used the number you entered", body)
 
     def test_note_appears_when_entered_size_differs_from_document(self):
         _upload_and_confirm(HH, HH_001_FILES, preset_household_size=4)
-        body = client.get(f"/household/{HH}/export").text
+        body = _export_pdf_text(HH)
         self.assertIn("RealDoor used the number you entered -- 4", body)
         self.assertIn("Income limit for a household of 4", body)
         self.assertIn("Number of people in your household: 1", body)
@@ -137,8 +149,8 @@ class BrokenConfirmedDocumentSelfHealingTests(unittest.TestCase):
         storage.delete_household("HH-001")
 
     def test_blank_document_never_appears_in_export(self):
-        body = client.get("/household/HH-001/export").text
-        documents_section = body.split("DOCUMENTS INCLUDED")[1]
+        body = _export_pdf_text("HH-001")
+        documents_section = body.split("Documents included")[1]
         # Only the real, complete pay stub should be listed -- no bare
         # "Pay stub" line with zero fields under it.
         self.assertEqual(documents_section.count("Pay stub"), 1)
@@ -150,8 +162,10 @@ class BrokenConfirmedDocumentSelfHealingTests(unittest.TestCase):
         self.assertEqual(preview_section.count("Pay stub"), 1)
 
     def test_checklist_still_shows_pay_stub_present_via_the_good_copy(self):
-        body = client.get("/household/HH-001/export").text
-        self.assertIn("Pay stub: Present", body)
+        # Checklist rows pair a plain label with a separate status-badge
+        # cell (no colon) -- unlike the Documents Included field table.
+        body = _export_pdf_text("HH-001")
+        self.assertIn("Pay stub ✓ Present", body)
 
 
 class ReasonSpecificityTests(unittest.TestCase):
@@ -180,7 +194,7 @@ class ReasonSpecificityTests(unittest.TestCase):
         # gross_pay deliberately never set.
         storage.confirm_document(HH, doc_id)
 
-        body = client.get(f"/household/{HH}/export").text
+        body = _export_pdf_text(HH)
         self.assertIn("The pay stub dated Jun 3-16 is missing some information", body)
 
     def test_incomplete_reason_gives_actionable_guidance_when_nothing_can_be_named(self):
@@ -189,7 +203,7 @@ class ReasonSpecificityTests(unittest.TestCase):
         )
         broken_doc_id = self.doc_ids_by_filename["hh-001_d02_pay_stub.pdf"]
         storage.confirm_document(HH, broken_doc_id)
-        body = client.get(f"/household/{HH}/export").text
+        body = _export_pdf_text(HH)
         self.assertIn("still needs its details filled in", body)
         self.assertIn("go back and complete it", body)
         # The old vague wording must be gone from the primary report.
