@@ -14,9 +14,15 @@
   {% for dt in checklist.required %}
     <tr><td>{{ document_type_labels.get(dt, dt) }}</td>
         <td>
-          {% if dt in checklist.missing %}<span class="badge warn">Missing</span>
-          {% elif dt in expired_document_types %}<span class="badge warn">Expired — needs a newer copy</span>
-          {% else %}<span class="badge ok">Present</span>{% endif %}
+          {% if dt in checklist.missing %}
+            <span class="badge warn">⚠ Missing</span>
+            <div class="status-reason">We don't have this yet.</div>
+          {% elif dt in expired_document_types %}
+            <span class="badge warn">⚠ Expired</span>
+            <div class="status-reason">This is older than 60 days and needs a newer copy.</div>
+          {% else %}
+            <span class="badge ok">✓ Present</span>
+          {% endif %}
         </td></tr>
   {% endfor %}
   {% for dt in checklist.extra %}
@@ -24,8 +30,34 @@
   {% endfor %}
   </tbody>
 </table>
+{% if checklist.missing or expired_document_types %}
+<p class="fix-hint">Need to fix something? <a href="/household/{{ household.household_id }}/profile">Go back and edit</a>.</p>
+{% endif %}
 {% else %}
 <p class="empty">Set a household size to see the required-document checklist.</p>
+{% endif %}
+
+{% if confirmed_documents %}
+<details class="show-details">
+  <summary>Preview your packet</summary>
+  <p class="empty">Exactly what's included if you download now -- the values you confirmed, not the original files.</p>
+  {% for doc in confirmed_documents %}
+  <div class="doc-preview">
+    <h4>{{ document_type_labels.get(doc.document_type, doc.document_type) }} <span class="muted">— {{ doc.file_name }}</span></h4>
+    <table class="fields">
+      <tbody>
+      {% for label, (field_name, kind) in field_map.get(doc.document_type, {}).items() %}
+        {% set record = doc.fields.get(field_name) %}
+        {% if record and record.value not in (None, "") %}
+        <tr><td>{{ field_labels.get(field_name, field_name) }}</td><td>{{ record.value }}</td></tr>
+        {% endif %}
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endfor %}
+  <p class="fix-hint">Need to fix a value? <a href="/household/{{ household.household_id }}/profile">Go back and edit</a>.</p>
+</details>
 {% endif %}
 
 <div class="export-row">
@@ -36,6 +68,10 @@
   </form>
   <p class="empty">This package is only ever viewed, downloaded, or deleted by you. It is never submitted automatically.</p>
 </div>
+
+{% if household.consent_given %}
+<p class="consent-reminder">You agreed to how your data is used — <a href="/how-it-works">review again</a>.</p>
+{% endif %}
 
 {% if household.activity_log %}
 <details class="show-details">

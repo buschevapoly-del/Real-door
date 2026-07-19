@@ -196,3 +196,25 @@ table.fields th, table.fields td { text-align: left; padding: 0.35rem 0.5rem; bo
 
 /* Screen 2/3 navigation row */
 .screen-nav { display: flex; gap: 0.75rem; align-items: center; margin-top: 1.5rem; }
+
+/* Screen 3: checklist reasons, packet preview, consent reminder */
+.status-reason { font-size: 0.8rem; color: var(--muted); margin-top: 0.2rem; }
+.fix-hint { font-size: 0.9rem; margin-top: 0.5rem; }
+.doc-preview { margin: 0.75rem 0; }
+.doc-preview h4 { margin: 0 0 0.3rem; font-size: 0.95rem; }
+.doc-preview .muted { color: var(--muted); font-weight: normal; }
+.consent-reminder { font-size: 0.85rem; color: var(--muted); margin-top: 1rem; }
+
+/* Dev/test tools footer -- kept visually separate from the renter's flow */
+.dev-tools {
+  margin-top: 3rem;
+  padding-top: 0.75rem;
+  border-top: 1px dashed var(--border);
+}
+.dev-tools-label {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--muted);
+  margin: 0 0 0.2rem;
+}

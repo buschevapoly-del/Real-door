@@ -223,6 +223,8 @@ def _render_packet(request: Request, household_id: str, **extra):
         stage=3,
         checklist=checklist,
         expired_document_types=_expired_document_types(submission),
+        confirmed_documents=_confirmed(household),
+        field_map=FIELD_MAP,
         **extra,
     )
     return templates.TemplateResponse(request, "packet.html", context)
