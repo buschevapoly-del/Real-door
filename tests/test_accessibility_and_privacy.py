@@ -105,7 +105,9 @@ class ActivityLogTests(unittest.TestCase):
 class AccessibilityMarkerTests(unittest.TestCase):
     def test_household_page_has_no_button_nested_in_anchor(self):
         page = client.get("/household/HH-A11Y-TEST").text
-        self.assertNotIn("<button", page[page.find("Download package"):page.find("Download package") + 80])
+        idx = page.find("Download your application packet")
+        self.assertGreater(idx, -1)
+        self.assertNotIn("<button", page[idx : idx + 80])
 
     def test_qa_answer_region_is_a_live_region(self):
         resp = client.post("/household/HH-A11Y-TEST/qa", data={"question": "What is the frozen 60% threshold?"})

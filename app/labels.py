@@ -2,8 +2,12 @@
 
 Kept as a single, separate config from the extraction/calculation logic so
 wording can change without touching the pipeline that produces the values
-(PRD: Module 1 - Profile, section 5).
+(PRD: Module 1 - Profile, section 5; Module 2 - Understand, section 5;
+Module 3 - Prepare, section 5). Nothing here changes what is calculated,
+logged, or stored -- only how it's displayed.
 """
+import re
+from datetime import datetime
 
 # Internal field name -> what the renter sees. One dictionary, reused by
 # every screen (upload/review/confirm) and the "how this works" page.
@@ -63,3 +67,91 @@ def confidence_state(field_record: dict) -> dict:
     if confidence >= CONFIDENCE_REVIEW_THRESHOLD:
         return {"state": "good", "message": "Looks good."}
     return {"state": "check", "message": "Please double-check this."}
+
+
+# ---------------------------------------------------------------------------
+# Module 2 - Understand: plain language for the enum/status/reason-code
+# machinery, so a renter never has to parse an enum or a reason code
+# (PRD: Module 2, section 3.1). Extend this table as new codes appear.
+# ---------------------------------------------------------------------------
+
+COMPARISON_LABELS = {
+    "below_or_equal": "Your income is at or below the threshold",
+    "above": "Your income is above the threshold",
+    "no_frozen_threshold": "We don't have an income limit on file for this household size",
+}
+
+READINESS_LABELS = {
+    "READY_TO_REVIEW": "Ready to review",
+    "NEEDS_REVIEW": "Needs a closer look",
+}
+
+REASON_CODE_LABELS = {
+    "INCOMPLETE_PAY_STUB_FIELDS": "One of your pay stubs is missing some information",
+    "PAY_STUB_TOTAL_CONFLICT": "The amounts on your pay stubs don't match",
+    "GIG_INCOME_UNCORROBORATED": "Your freelance/gig income needs an extra document to confirm it",
+    "EMPLOYMENT_LETTER_EXPIRED": "Your employment letter is older than we can accept -- please provide a recent one",
+    "MISSING_REQUIRED_DOCUMENT": "We're missing a document we need",
+    "HOUSEHOLD_SIZE_OUTSIDE_FROZEN_TABLE": "We don't have an income limit on file for this household size",
+}
+
+
+def reason_code_label(code: str) -> str:
+    """Plain-language text for a review-reason code. Falls back to a
+    generated sentence for document-type-specific codes not explicitly
+    listed above (e.g. a new document type's _EXPIRED/INCOMPLETE_..._FIELDS
+    code), then to a humanized version of the raw code as a last resort --
+    this must never crash on an unrecognized code."""
+    if code in REASON_CODE_LABELS:
+        return REASON_CODE_LABELS[code]
+    match = re.match(r"INCOMPLETE_(.+)_FIELDS$", code)
+    if match:
+        doc_label = DOCUMENT_TYPE_LABELS.get(match.group(1).lower(), match.group(1).lower().replace("_", " "))
+        return f"One of your {doc_label.lower()} documents is missing some information"
+    match = re.match(r"(.+)_EXPIRED$", code)
+    if match:
+        doc_label = DOCUMENT_TYPE_LABELS.get(match.group(1).lower(), match.group(1).lower().replace("_", " "))
+        return f"Your {doc_label.lower()} is older than we can accept -- please provide a recent one"
+    return code.replace("_", " ").capitalize()
+
+
+# ---------------------------------------------------------------------------
+# Module 3 - Prepare: plain language for the activity log (PRD: Module 3,
+# section 3.3). The log itself still records actions only, never raw
+# document contents or corrected values -- this only changes how those
+# action names and timestamps are displayed.
+# ---------------------------------------------------------------------------
+
+ACTIVITY_ACTION_LABELS = {
+    "household_size_set": "You entered your household size",
+    "consent_given": "You agreed to the data use terms",
+    "document_confirmed": "You confirmed a document",
+    "document_deleted": "You removed a document",
+    "package_exported": "You downloaded your packet",
+}
+
+
+def activity_label(entry: dict) -> str:
+    action = entry.get("action", "")
+    detail = entry.get("detail", "")
+    if action == "document_uploaded":
+        match = re.search(r"\(([^)]+)\)\s*$", detail)
+        raw_type = match.group(1) if match else ""
+        doc_label = DOCUMENT_TYPE_LABELS.get(raw_type, raw_type.replace("_", " ") if raw_type else "a document")
+        return f"You uploaded your {doc_label.lower()}"
+    if action == "field_corrected":
+        field_name = detail.rsplit(".", 1)[-1] if detail else ""
+        field_label = FIELD_LABELS.get(field_name, field_name.replace("_", " ") or "a value")
+        return f'You corrected "{field_label}" on a document'
+    if action in ACTIVITY_ACTION_LABELS:
+        return ACTIVITY_ACTION_LABELS[action]
+    return action.replace("_", " ").capitalize() or "Activity recorded"
+
+
+def format_timestamp(iso_string: str) -> str:
+    """"Jul 18, 2026, 10:55 PM" instead of a raw ISO timestamp."""
+    try:
+        dt = datetime.fromisoformat(iso_string)
+    except (ValueError, TypeError):
+        return iso_string
+    return dt.strftime("%b %-d, %Y, %-I:%M %p")

@@ -87,9 +87,18 @@ table.fields th, table.fields td { text-align: left; padding: 0.35rem 0.5rem; bo
 .notes { color: var(--muted); font-size: 0.85rem; }
 .confirm-row { display: block; margin: 0.5rem 0; }
 .summary-card { border: 1px solid var(--border); border-radius: 0.5rem; padding: 1rem; }
-.status { font-weight: bold; padding: 0.15rem 0.5rem; border-radius: 0.3rem; }
+.big-figure { font-size: 1.6rem; margin: 0.25rem 0; }
+.status {
+  display: inline-block;
+  font-weight: bold;
+  font-size: 1.05rem;
+  padding: 0.3rem 0.8rem;
+  border-radius: 0.4rem;
+}
 .status.ready_to_review { background: var(--ok-bg); color: var(--ok-fg); }
+.status.ready_to_review::before { content: "✓ "; }
 .status.needs_review { background: var(--warn-bg); color: var(--warn-fg); }
+.status.needs_review::before { content: "⚠ "; }
 .citations { font-size: 0.85rem; }
 .citations code { background: color-mix(in srgb, var(--fg) 8%, transparent); padding: 0 0.25rem; border-radius: 0.2rem; }
 .qa-answer { border: 1px solid var(--border); border-radius: 0.4rem; padding: 0.75rem 1rem; margin-top: 0.5rem; }

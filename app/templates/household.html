@@ -40,45 +40,46 @@
 
   {% if submission %}
   <div class="summary-card">
-    <p><strong>Annualized income:</strong> ${{ '{:,.2f}'.format(submission.annualized_income) }}</p>
+    <p class="big-figure"><strong>${{ '{:,.2f}'.format(submission.annualized_income) }}</strong> a year</p>
     {% if submission.threshold %}
-    <p><strong>Frozen 60% AMI threshold</strong> (household size {{ submission.threshold.household_size }},
-       effective {{ submission.threshold.effective_date }}): ${{ '{:,.0f}'.format(submission.threshold.income_limit_60_percent) }}</p>
-    {% else %}
-    <p><strong>No frozen threshold</strong> exists for this household size in the 1-8 table.</p>
+    <p>Income limit for a household of {{ submission.threshold.household_size }}:
+       ${{ '{:,.0f}'.format(submission.threshold.income_limit_60_percent) }} a year</p>
     {% endif %}
-    <p><strong>Comparison:</strong> {{ submission.comparison }}</p>
-    <p><strong>Readiness status:</strong> <span class="status {{ submission.readiness_status|lower }}">{{ submission.readiness_status }}</span></p>
+    <p>{{ comparison_labels.get(submission.comparison, submission.comparison) }}.</p>
+
+    <p><span class="status {{ submission.readiness_status|lower }}">
+      {{ readiness_labels.get(submission.readiness_status, submission.readiness_status) }}
+    </span></p>
     {% if submission.review_reasons %}
-      <p><strong>Review reasons:</strong></p>
-      <ul>{% for r in submission.review_reasons %}<li>{{ r }}</li>{% endfor %}</ul>
+      <ul>{% for r in submission.review_reasons %}<li>{{ reason_code_label(r) }}</li>{% endfor %}</ul>
     {% endif %}
 
-    <h3>Income lines</h3>
     <table class="fields">
-      <thead><tr><th>Document</th><th>Type</th><th>Formula</th><th>Annualized</th></tr></thead>
+      <thead><tr><th>Document</th><th>How we calculated it</th><th>Yearly amount</th></tr></thead>
       <tbody>
-      {% for line in submission.income_lines %}
-        <tr><td>{{ line.document_id }}</td><td>{{ line.document_type }}</td>
+      {% for line in income_lines_display %}
+        <tr><td>{{ line.display_label }}</td>
             <td>{{ line.formula }}</td>
             <td>${{ '{:,.2f}'.format(line.annual_amount) }}</td></tr>
       {% endfor %}
       </tbody>
     </table>
 
-    <h3>Citations</h3>
-    <p class="provenance">Rule corpus version: <code>{{ submission.rule_corpus_version }}</code></p>
-    <ul class="citations">
-    {% for c in submission.citations %}
-      {% if c.type == 'rule' %}
-        <li><code>{{ c.rule_id }}</code> — {{ c.text }} (<a href="{{ c.source_url }}" target="_blank" rel="noopener">source</a>, effective {{ c.effective_date }})</li>
-      {% else %}
-        <li><code>{{ c.document_id }}</code> field <code>{{ c.field }}</code> — page {{ c.page }}, bbox {{ c.bbox }}</li>
-      {% endif %}
-    {% endfor %}
-    </ul>
-
-    <a href="/household/{{ household.household_id }}/submission.json" target="_blank">View raw submission JSON</a>
+    <details class="show-details">
+      <summary>Show calculation details</summary>
+      <h3>Citations</h3>
+      <p class="provenance">Rule corpus version: <code>{{ submission.rule_corpus_version }}</code></p>
+      <ul class="citations">
+      {% for c in submission.citations %}
+        {% if c.type == 'rule' %}
+          <li><code>{{ c.rule_id }}</code> — {{ c.text }} (<a href="{{ c.source_url }}" target="_blank" rel="noopener">source</a>, effective {{ c.effective_date }})</li>
+        {% else %}
+          <li><code>{{ c.document_id }}</code> field <code>{{ c.field }}</code> — page {{ c.page }}, bbox {{ c.bbox }}</li>
+        {% endif %}
+      {% endfor %}
+      </ul>
+      <a href="/household/{{ household.household_id }}/submission.json" target="_blank">View raw submission JSON</a>
+    </details>
   </div>
   {% else %}
   <p class="empty">Set a household size and confirm at least one document to see the calculation.</p>
@@ -111,10 +112,14 @@
     <tbody>
     {% for dt in checklist.required %}
       <tr><td>{{ document_type_labels.get(dt, dt) }}</td>
-          <td>{% if dt in checklist.missing %}<span class="badge warn">missing</span>{% else %}<span class="badge ok">present</span>{% endif %}</td></tr>
+          <td>
+            {% if dt in checklist.missing %}<span class="badge warn">Missing</span>
+            {% elif dt in expired_document_types %}<span class="badge warn">Expired — needs a newer copy</span>
+            {% else %}<span class="badge ok">Present</span>{% endif %}
+          </td></tr>
     {% endfor %}
     {% for dt in checklist.extra %}
-      <tr><td>{{ document_type_labels.get(dt, dt) }} (not on required list)</td><td><span class="badge">extra</span></td></tr>
+      <tr><td>{{ document_type_labels.get(dt, dt) }} (not on required list)</td><td><span class="badge">Extra</span></td></tr>
     {% endfor %}
     </tbody>
   </table>
@@ -123,7 +128,7 @@
   {% endif %}
 
   <div class="export-row">
-    <a href="/household/{{ household.household_id }}/export" class="button-link">Download package (JSON)</a>
+    <a href="/household/{{ household.household_id }}/export" class="button-link">Download your application packet</a>
     <form method="post" action="/household/{{ household.household_id }}/delete_package" class="inline-form"
           onsubmit="return confirm('Delete this household package permanently?');">
       <button type="submit" class="danger-btn">Delete package</button>
@@ -132,13 +137,15 @@
   </div>
 
   {% if household.activity_log %}
-  <h3>Activity log</h3>
-  <p class="empty">What happened, when -- not document contents or corrected values. Deleted along with the package.</p>
-  <ul class="citations">
-    {% for entry in household.activity_log %}
-    <li>{{ entry.timestamp }} — {{ entry.action }}{% if entry.detail %} ({{ entry.detail }}){% endif %}</li>
-    {% endfor %}
-  </ul>
+  <details class="show-details">
+    <summary>Show activity history</summary>
+    <p class="empty">What happened, when -- not document contents or corrected values. Deleted along with the package.</p>
+    <ul class="citations">
+      {% for entry in household.activity_log %}
+      <li>{{ format_timestamp(entry.timestamp) }} — {{ activity_label(entry) }}</li>
+      {% endfor %}
+    </ul>
+  </details>
   {% endif %}
 </section>
 {% endblock %}

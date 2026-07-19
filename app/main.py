@@ -13,9 +13,11 @@ This app never decides eligibility and never sends a package anywhere on
 its own (governance/DATA_USE_AND_SAFETY.md).
 """
 import json
+import re
 import shutil
 import tempfile
 import uuid
+from collections import Counter
 from pathlib import Path
 
 from fastapi import FastAPI, Form, Request, Response, UploadFile
@@ -28,7 +30,16 @@ from app.checklist import checklist_status
 from app.config import DATA_DIR, EVENT_DATE, DOCUMENT_CURRENCY_WINDOW_DAYS, RULE_CORPUS_VERSION
 from app.extraction import extract_document, draw_highlight, FIELD_MAP, _parse_value
 from app.income import build_submission
-from app.labels import FIELD_LABELS, DOCUMENT_TYPE_LABELS, confidence_state
+from app.labels import (
+    FIELD_LABELS,
+    DOCUMENT_TYPE_LABELS,
+    COMPARISON_LABELS,
+    READINESS_LABELS,
+    confidence_state,
+    reason_code_label,
+    activity_label,
+    format_timestamp,
+)
 from app.qa import answer_question
 from app.safety import DISCLAIMER_60_DAY_CONVENTION, DISCLAIMER_NO_DECISION
 from app.schema_validate import validate_submission
@@ -100,6 +111,11 @@ templates.env.globals.update(
     sixty_day_disclaimer=DISCLAIMER_60_DAY_CONVENTION,
     field_labels=FIELD_LABELS,
     document_type_labels=DOCUMENT_TYPE_LABELS,
+    comparison_labels=COMPARISON_LABELS,
+    readiness_labels=READINESS_LABELS,
+    reason_code_label=reason_code_label,
+    activity_label=activity_label,
+    format_timestamp=format_timestamp,
 )
 
 EXPORTS_DIR = DATA_DIR / "exports"
@@ -112,6 +128,32 @@ def _unconfirmed(household: dict) -> list:
 
 def _confirmed(household: dict) -> list:
     return [d for d in household["documents"].values() if d["confirmed"]]
+
+
+def _label_income_lines(income_lines: list) -> list:
+    """Replace raw document IDs with a plain type label for the primary
+    view (PRD Module 2, section 3.1) -- numbered only when a household has
+    more than one document of the same type."""
+    type_counts = Counter(line.document_type for line in income_lines)
+    seen = Counter()
+    labeled = []
+    for line in income_lines:
+        seen[line.document_type] += 1
+        base_label = DOCUMENT_TYPE_LABELS.get(line.document_type, line.document_type.replace("_", " ").title())
+        display_label = f"{base_label} {seen[line.document_type]}" if type_counts[line.document_type] > 1 else base_label
+        labeled.append({"display_label": display_label, "formula": line.formula, "annual_amount": line.annual_amount})
+    return labeled
+
+
+def _expired_document_types(submission) -> set:
+    if submission is None:
+        return set()
+    expired = set()
+    for reason in submission.review_reasons:
+        match = re.match(r"(.+)_EXPIRED$", reason)
+        if match:
+            expired.add(match.group(1).lower())
+    return expired
 
 
 def _submission_for(household: dict):
@@ -144,7 +186,9 @@ def _render_household(request: Request, household_id: str, **extra):
         request,
         household_id,
         checklist=checklist,
+        expired_document_types=_expired_document_types(submission),
         submission=submission,
+        income_lines_display=_label_income_lines(submission.income_lines) if submission else [],
         confirmed_documents=_confirmed(household),
         unconfirmed_count=len(_unconfirmed(household)),
         **extra,
