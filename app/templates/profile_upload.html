@@ -1,14 +1,18 @@
 {% extends "base.html" %}
 {% block title %}RealDoor — Upload documents{% endblock %}
-{% block header_extra %}{% include "_household_switcher.html" %}{% endblock %}
 {% block content %}
 {% include "_stage_indicator.html" %}
 
 <h2>Upload your documents</h2>
 
 <form method="post" action="/household/{{ household.household_id }}/profile/upload" enctype="multipart/form-data">
-  <label for="file-input">Upload your documents (pay stubs, employment letters, benefit letters)</label>
-  <input id="file-input" type="file" name="files" accept="application/pdf" multiple required>
+  <div class="dropzone" id="dropzone">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M7 18a4.5 4.5 0 0 1-1.4-8.78A5.5 5.5 0 0 1 16.3 7 4.5 4.5 0 0 1 17 16"/><path d="M12 12v7"/><path d="M9 15l3-3 3 3"/></svg>
+    <p class="dz-title">Drag files here or click to browse</p>
+    <p class="dz-hint">Pay stubs, employment letters, benefit letters</p>
+    <label for="file-input" class="button-link secondary">Choose files</label>
+    <input id="file-input" type="file" name="files" accept="application/pdf" multiple required>
+  </div>
 
   {% if not household.consent_given %}
   <label class="confirm-row">
@@ -21,16 +25,34 @@
   <button type="submit">Upload</button>
 </form>
 
+<script>
+(function () {
+  var dz = document.getElementById("dropzone");
+  var input = document.getElementById("file-input");
+  ["dragover", "dragleave", "drop"].forEach(function (evt) {
+    dz.addEventListener(evt, function (e) { e.preventDefault(); e.stopPropagation(); });
+  });
+  dz.addEventListener("dragover", function () { dz.classList.add("dragover"); });
+  dz.addEventListener("dragleave", function () { dz.classList.remove("dragover"); });
+  dz.addEventListener("drop", function (e) {
+    dz.classList.remove("dragover");
+    if (e.dataTransfer && e.dataTransfer.files.length) {
+      input.files = e.dataTransfer.files;
+    }
+  });
+})();
+</script>
+
 {% if unconfirmed_documents %}
 <h3>Uploaded so far</h3>
 <ul class="file-list">
   {% for doc in unconfirmed_documents %}
   <li class="file-row">
     <img src="/household/{{ household.household_id }}/documents/{{ doc.document_id }}/image" alt="" class="thumb">
-    <span>{{ doc.file_name }}</span>
+    <span>{{ doc_preview_label(doc) }}</span>
     <form method="post" action="/household/{{ household.household_id }}/documents/{{ doc.document_id }}/delete" class="inline-form">
       <input type="hidden" name="redirect_to" value="/household/{{ household.household_id }}/profile">
-      <button type="submit" class="danger-btn">Remove</button>
+      <button type="submit" class="remove-link">Remove</button>
     </form>
   </li>
   {% endfor %}
@@ -41,16 +63,15 @@
 {% endif %}
 
 {% if confirmed_documents %}
-<h3>Your confirmed documents</h3>
+<h3>Your documents</h3>
 <ul class="file-list">
   {% for doc in confirmed_documents %}
   <li class="file-row">
     <img src="/household/{{ household.household_id }}/documents/{{ doc.document_id }}/image" alt="" class="thumb">
-    <span>{{ doc.file_name }}</span>
-    <span class="badge">{{ document_type_labels.get(doc.document_type, doc.document_type) }}</span>
+    <span>{{ doc_preview_label(doc) }}</span>
     <form method="post" action="/household/{{ household.household_id }}/documents/{{ doc.document_id }}/delete" class="inline-form">
       <input type="hidden" name="redirect_to" value="/household/{{ household.household_id }}/profile">
-      <button type="submit" class="danger-btn">Remove</button>
+      <button type="submit" class="remove-link">Remove</button>
     </form>
   </li>
   {% endfor %}

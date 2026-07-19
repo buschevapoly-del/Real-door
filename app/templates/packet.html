@@ -1,11 +1,10 @@
 {% extends "base.html" %}
 {% block title %}RealDoor — Your application packet{% endblock %}
-{% block header_extra %}{% include "_household_switcher.html" %}{% endblock %}
 {% block content %}
 {% include "_stage_indicator.html" %}
 
 <h2>Your application packet</h2>
-<div class="banner subtle">{{ sixty_day_disclaimer }} Event date: {{ event_date }}. Window: {{ currency_window_days }} days.</div>
+<p class="lede">Here's what's included in your packet:</p>
 
 {% if checklist %}
 <table class="fields">
@@ -77,31 +76,30 @@
         onsubmit="return confirm('Delete this household package permanently?');">
     <button type="submit" class="danger-btn">Delete package</button>
   </form>
-  <p class="empty">This package is only ever viewed, downloaded, or deleted by you. It is never submitted automatically.</p>
 </div>
+<p class="reassurance">🔒 This package is only ever viewed, downloaded, or deleted by you. It's never submitted automatically. Bring it to your appointment or send it to your housing agency yourself.</p>
 <p id="download-confirm" class="download-confirm" role="status" aria-live="polite" hidden>
   ✅ Your packet has been downloaded. Bring this file to your appointment or send it to your housing agency —
   RealDoor never sends it for you.
 </p>
-<p class="technical-export-link">
-  <a href="/household/{{ household.household_id }}/export/technical">Technical export (JSON, for verification)</a>
-</p>
 
-{% if household.consent_given %}
-<p class="consent-reminder">You agreed to how your data is used — <a href="/how-it-works">review again</a>.</p>
-{% endif %}
-
-{% if household.activity_log %}
-<details class="show-details">
-  <summary>Show activity history</summary>
-  <p class="empty">What happened, when -- not document contents or corrected values. Deleted along with the package.</p>
-  <ul class="citations">
-    {% for entry in household.activity_log %}
-    <li>{{ format_timestamp(entry.timestamp) }} — {{ activity_label(entry) }}</li>
-    {% endfor %}
-  </ul>
-</details>
-{% endif %}
+<div class="page-footer-block">
+  <p><a href="/household/{{ household.household_id }}/export/technical">Technical export (JSON, for verification)</a></p>
+  {% if household.consent_given %}
+  <p>You agreed to how your data is used — <a href="/how-it-works">review again</a></p>
+  {% endif %}
+  {% if household.activity_log %}
+  <details class="show-details">
+    <summary>Show activity history</summary>
+    <p class="empty">What happened, when -- not document contents or corrected values. Deleted along with the package.</p>
+    <ul class="citations">
+      {% for entry in household.activity_log %}
+      <li>{{ format_timestamp(entry.timestamp) }} — {{ activity_label(entry) }}</li>
+      {% endfor %}
+    </ul>
+  </details>
+  {% endif %}
+</div>
 
 <div class="screen-nav">
   <a href="/household/{{ household.household_id }}/summary" class="button-link secondary">Back</a>

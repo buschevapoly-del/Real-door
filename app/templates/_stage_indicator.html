@@ -1,4 +1,19 @@
 {% set stage_labels = ["Upload your documents", "Your income summary", "Your application packet"] %}
+{% set mini_labels = ["Upload", "Review", "Packet"] %}
+<ul class="step-preview" aria-hidden="true">
+  <li class="{{ 'current' if stage == 1 else '' }}">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="M7 8l5-5 5 5"/><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>
+    {{ mini_labels[0] }}
+  </li>
+  <li class="{{ 'current' if stage == 2 else '' }}">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20V10"/><path d="M12 20V4"/><path d="M20 20v-6"/></svg>
+    {{ mini_labels[1] }}
+  </li>
+  <li class="{{ 'current' if stage == 3 else '' }}">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
+    {{ mini_labels[2] }}
+  </li>
+</ul>
 <nav class="steps" aria-label="Progress">
   <p class="step-label">Step {{ stage }} of 3: {{ stage_labels[stage - 1] }}</p>
   <ol class="step-bar">

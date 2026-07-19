@@ -23,6 +23,7 @@ import tempfile
 import uuid
 from collections import Counter
 from datetime import datetime, timezone
+from functools import lru_cache
 from pathlib import Path
 
 from fastapi import FastAPI, Form, Request, Response, UploadFile
@@ -282,6 +283,23 @@ def _render_profile_screen(request: Request, household_id: str, template_name: s
     return templates.TemplateResponse(request, template_name, context)
 
 
+# Common, non-household-specific questions -- run through the same rule
+# Q&A engine as the free-text box below them (no separate/paraphrased
+# copy), so the FAQ accordion is exactly as grounded/citation-backed as
+# any other answer, never hand-written text disconnected from the rules.
+FAQ_QUESTIONS = [
+    "How is my recurring income annualized?",
+    "What is the income limit for my household size?",
+    'What does "Needs a closer look" mean?',
+    "Can RealDoor decide if I qualify?",
+]
+
+
+@lru_cache(maxsize=1)
+def _faq_items() -> list:
+    return [{"question": q, "answer": answer_question(q)} for q in FAQ_QUESTIONS]
+
+
 def _render_summary(request: Request, household_id: str, **extra):
     household = storage.get_household(household_id)
     submission = _submission_for(household)
@@ -291,6 +309,7 @@ def _render_summary(request: Request, household_id: str, **extra):
         stage=2,
         submission=submission,
         income_lines_display=_label_income_lines(submission.income_lines) if submission else [],
+        faq_items=_faq_items(),
         **extra,
     )
     return templates.TemplateResponse(request, "summary.html", context)
@@ -395,9 +414,14 @@ def profile_confirm(request: Request, household_id: str):
     return _render_profile_screen(request, household_id, "profile_confirm.html")
 
 
-@app.post("/household/{household_id}/profile/confirm")
-async def profile_confirm_post(request: Request, household_id: str):
-    form = await request.form()
+def _apply_confirm(household_id: str, household_size_input: str, document_updates: dict) -> dict:
+    """The one place confirm logic lives -- both the HTML form POST and
+    the JSON API call this with the same structured input:
+        document_updates = {document_id: {"document_type": str | None,
+                                           "fields": {field_name: str}}}
+    Returns {"ok": True} on success, or
+    {"ok": False, "confirm_error": str, "incomplete_documents": {doc_id: [field_names]}}.
+    """
     household = storage.get_household(household_id)
 
     # Household size is no longer a separate pre-upload step -- it's the
@@ -408,7 +432,7 @@ async def profile_confirm_post(request: Request, household_id: str):
     # Confirm, for exactly the same reason a rasterized document needs
     # manual entry: nothing to read the number from automatically.
     if not _has_application_summary(household):
-        standalone_size = form.get("household_size", "").strip()
+        standalone_size = (household_size_input or "").strip()
         if standalone_size:
             try:
                 storage.set_household_size(household_id, int(standalone_size))
@@ -420,19 +444,21 @@ async def profile_confirm_post(request: Request, household_id: str):
         doc = household["documents"][doc_id]
         if doc["confirmed"]:
             continue
-        doc_type = form.get(f"document_type__{doc_id}")
+        update = document_updates.get(doc_id, {})
+        doc_type = update.get("document_type")
         if doc_type:
             storage.set_document_type(household_id, doc_id, doc_type)
             doc_type_for_fields = doc_type
         else:
             doc_type_for_fields = doc["document_type"]
         required_fields = list(FIELD_MAP.get(doc_type_for_fields, {}).values())
+        submitted_fields = update.get("fields", {})
         for field_name, kind in required_fields:
-            submitted = form.get(f"{field_name}__{doc_id}")
+            submitted = submitted_fields.get(field_name)
             if submitted is None or submitted == "":
                 continue
             existing = doc["fields"].get(field_name, {})
-            parsed = _parse_value(submitted, kind)
+            parsed = _parse_value(str(submitted), kind)
             if existing.get("value") != parsed:
                 storage.update_field(household_id, doc_id, field_name, parsed, bbox=existing.get("bbox"))
         # Re-fetch after any field updates above to check what's actually on
@@ -457,13 +483,38 @@ async def profile_confirm_post(request: Request, household_id: str):
             size_value = doc["fields"].get("household_size", {}).get("value")
             if size_value:
                 storage.set_household_size(household_id, int(size_value))
+
     if incomplete_documents:
+        return {
+            "ok": False,
+            "confirm_error": "Please fill in every field before confirming -- one or more documents below still need a value.",
+            "incomplete_documents": incomplete_documents,
+        }
+    return {"ok": True}
+
+
+@app.post("/household/{household_id}/profile/confirm")
+async def profile_confirm_post(request: Request, household_id: str):
+    form = await request.form()
+    household = storage.get_household(household_id)
+    document_updates = {}
+    for doc_id, doc in household["documents"].items():
+        doc_type = form.get(f"document_type__{doc_id}")
+        fields = {}
+        for field_name, kind in FIELD_MAP.get(doc_type or doc["document_type"], {}).values():
+            value = form.get(f"{field_name}__{doc_id}")
+            if value is not None:
+                fields[field_name] = value
+        document_updates[doc_id] = {"document_type": doc_type, "fields": fields}
+
+    result = _apply_confirm(household_id, form.get("household_size", ""), document_updates)
+    if not result["ok"]:
         return _render_profile_screen(
             request,
             household_id,
             "profile_confirm.html",
-            confirm_error="Please fill in every field before confirming -- one or more documents below still need a value.",
-            incomplete_documents=incomplete_documents,
+            confirm_error=result["confirm_error"],
+            incomplete_documents=result["incomplete_documents"],
         )
     return RedirectResponse(url=f"/household/{household_id}/summary?flash=confirmed", status_code=303)
 

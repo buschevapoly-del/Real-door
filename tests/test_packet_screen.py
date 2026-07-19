@@ -189,19 +189,22 @@ class PacketPreviewFormattingTests(unittest.TestCase):
 
 
 class DevToolsSeparationTests(unittest.TestCase):
-    def test_household_test_fixture_list_not_next_to_switcher_field(self):
+    def test_household_test_fixture_list_and_switcher_are_both_in_the_dev_tools_footer(self):
         page = _confirm_household(
             "HH-001", 1,
             ["hh-001_d01_application_summary.pdf", "hh-001_d02_pay_stub.pdf",
              "hh-001_d03_pay_stub.pdf", "hh-001_d04_employment_letter.pdf"],
         )
+        main_end_idx = page.find("</main>")
         switcher_idx = page.find("switcher")
         dev_tools_idx = page.find("dev-tools")
         self.assertGreater(dev_tools_idx, -1)
-        # The dev/test household list must sit well after the switcher form,
-        # not immediately beneath the household field a renter interacts with.
-        self.assertGreater(dev_tools_idx, switcher_idx)
         self.assertIn("Developer / test tools", page)
+        # Neither the household switcher nor the test-fixture list is part
+        # of the renter's visible flow -- both live inside the dev-tools
+        # footer, after the main content ends.
+        self.assertGreater(switcher_idx, main_end_idx)
+        self.assertGreater(dev_tools_idx, main_end_idx)
 
     def test_welcome_screen_does_not_duplicate_the_dev_tools_footer(self):
         page = client.get("/welcome").text
